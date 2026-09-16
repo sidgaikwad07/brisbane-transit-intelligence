@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: brisbane_transit_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-transit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-transit}
+      POSTGRES_DB: ${POSTGRES_DB:-brisbane_transit}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - transit_pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-transit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  transit_pgdata:

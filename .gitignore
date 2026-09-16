@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+data/raw/
+data/interim/
+*.zip
+.ipynb_checkpoints/
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+.DS_Store
+*.log
