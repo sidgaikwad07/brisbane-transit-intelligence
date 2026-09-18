@@ -4,6 +4,7 @@ pandas==2.2.3
 SQLAlchemy==2.0.36
 psycopg2-binary==2.9.10
 python-dotenv==1.0.1
+matplotlib==3.9.2
 
 # GTFS-Realtime (protobuf decoding) — week 2
 gtfs-realtime-bindings==1.0.0
