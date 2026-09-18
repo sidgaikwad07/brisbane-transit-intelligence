@@ -96,7 +96,7 @@ Full breakdown in [`docs/week1_findings.md`](docs/week1_findings.md), generated 
 GTFS static data. Headline numbers from the live feed: 12,793 stops with weekday
 service, 1,174 routes, 92,300 weekday scheduled trips (88,114 of them bus).
 
-![Weekday stop frequency across SEQ](docs/images/stop_frequency_map.png)
+![SEQ transit network — route shapes by mode](docs/images/network_map.png)
 
 The busiest interchanges by distinct routes served are the South East Busway
 stations — Buranda (118 routes), Griffith University (97), Roma Street (91),

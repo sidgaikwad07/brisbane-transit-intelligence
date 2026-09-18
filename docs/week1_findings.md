@@ -73,4 +73,4 @@
 | 61 | Bus | 507 |
 | 222 | Bus | 498 |
 
-![Stop frequency map](images/stop_frequency_map.png)
+![Network map — route shapes by mode](images/network_map.png)
