@@ -5,10 +5,10 @@ not just code — the goal is a working artifact at every checkpoint.
 
 ## Week 1 — Network foundation
 - [x] Repo scaffold, Docker Compose (Postgres + PostGIS)
-- [ ] GTFS static ingestion (`ingestion/gtfs_static.py`) — download, parse, load
-- [ ] Raw schema: `agency, routes, stops, trips, stop_times, calendar, calendar_dates, shapes`
-- [ ] Notebook: network summary — route counts, stop coverage by suburb, frequency by route
-- **Demo artifact:** a map of stop density / service frequency across Brisbane suburbs
+- [x] GTFS static ingestion (`ingestion/gtfs_static.py`) — download, parse, load
+- [x] Raw schema: `agency, routes, stops, trips, stop_times, calendar, calendar_dates, shapes`
+- [x] Network summary — route counts, stop coverage, weekday frequency by route/stop
+- [x] **Demo artifact:** [`docs/week1_findings.md`](docs/week1_findings.md) + stop-frequency map — DONE
 
 ## Week 2 — Live operations
 - [ ] GTFS-Realtime poller (`ingestion/gtfs_realtime_poller.py`) — Trip Updates + Vehicle Positions, protobuf decode, append to Postgres
