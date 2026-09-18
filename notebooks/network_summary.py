@@ -1,5 +1,5 @@
 """Week 1 deliverable: summarize the Brisbane transit network from the loaded
-GTFS static data, and produce a weekday stop-frequency map.
+GTFS static data, and produce a route-shape network map.
 
 "Weekday" is approximated as any service_id active on Monday
 (raw.calendar.monday = true). This ignores calendar_dates exceptions
@@ -20,12 +20,34 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
 from sqlalchemy import create_engine
 
 from ingestion.config import DATABASE_URL
 
-IMAGE_PATH = REPO_ROOT / "docs" / "images" / "stop_frequency_map.png"
+IMAGE_PATH = REPO_ROOT / "docs" / "images" / "network_map.png"
 FINDINGS_PATH = REPO_ROOT / "docs" / "week1_findings.md"
+
+SHAPES_SQL = """
+    SELECT shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence
+    FROM raw.shapes
+    ORDER BY shape_id, shape_pt_sequence
+"""
+
+SHAPE_MODE_SQL = """
+    SELECT DISTINCT t.shape_id, r.route_type
+    FROM raw.trips t
+    JOIN raw.routes r ON r.route_id = t.route_id
+    WHERE t.shape_id IS NOT NULL
+"""
+
+MODE_COLORS = {
+    "Bus": "#4C72B0",
+    "Rail": "#C44E52",
+    "Ferry": "#55A868",
+    "Tram/Light Rail": "#8172B2",
+}
 
 WEEKDAY_STOP_TRIPS_SQL = """
     SELECT
@@ -67,30 +89,71 @@ def fetch_data(engine) -> tuple[pd.DataFrame, pd.DataFrame]:
     return stops, routes
 
 
-def plot_stop_frequency_map(stops: pd.DataFrame) -> None:
-    IMAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(10, 10), dpi=150)
+def fetch_shapes(engine) -> tuple[pd.DataFrame, pd.DataFrame]:
+    shapes = pd.read_sql(SHAPES_SQL, engine)
+    shape_modes = pd.read_sql(SHAPE_MODE_SQL, engine)
+    # A shape_id is occasionally reused across route types in messy real-world
+    # feeds; keep the first mode seen per shape rather than dropping/erroring.
+    shape_modes = shape_modes.drop_duplicates(subset="shape_id", keep="first")
+    return shapes, shape_modes
 
-    # Log scale for size/color: a handful of major interchanges see orders of
-    # magnitude more trips than a typical suburban stop, so a linear scale
-    # would just show a few bright dots and nothing else.
-    sizes = 3 + (stops["weekday_trips"].clip(lower=1)).apply(lambda x: x**0.5) * 0.6
-    scatter = ax.scatter(
+
+def plot_network_map(stops: pd.DataFrame, shapes: pd.DataFrame, shape_modes: pd.DataFrame) -> None:
+    IMAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(12, 14), dpi=170)
+
+    mode_by_shape = shape_modes.set_index("shape_id")["route_type"].map(MODE_NAMES)
+
+    # Build one polyline per shape_id (a shape is GTFS's literal road/rail/
+    # ferry path a trip follows), grouped so each mode gets its own
+    # LineCollection — far faster to render than thousands of ax.plot calls.
+    segments_by_mode: dict[str, list] = {mode: [] for mode in MODE_COLORS}
+    for shape_id, group in shapes.groupby("shape_id", sort=False):
+        mode = mode_by_shape.get(shape_id, "Bus")
+        if mode not in segments_by_mode:
+            continue
+        segments_by_mode[mode].append(group[["shape_pt_lon", "shape_pt_lat"]].to_numpy())
+
+    # Draw rail/ferry/tram first (thicker, more saturated) then bus underneath
+    # in a muted tone, so the frequent, dense bus network reads as texture
+    # rather than drowning out the rapid-transit spine.
+    draw_order = ["Bus", "Ferry", "Tram/Light Rail", "Rail"]
+    style = {
+        "Bus": {"linewidths": 0.35, "alpha": 0.35},
+        "Ferry": {"linewidths": 1.1, "alpha": 0.85},
+        "Tram/Light Rail": {"linewidths": 1.4, "alpha": 0.9},
+        "Rail": {"linewidths": 1.2, "alpha": 0.9},
+    }
+    for mode in draw_order:
+        segs = segments_by_mode.get(mode, [])
+        if not segs:
+            continue
+        lc = LineCollection(segs, colors=MODE_COLORS[mode], **style[mode])
+        ax.add_collection(lc)
+
+    # Stops as a light, small-scale backdrop so hub density is still visible
+    # without competing with the route lines for attention.
+    ax.scatter(
         stops["stop_lon"],
         stops["stop_lat"],
-        c=stops["weekday_trips"],
-        s=sizes,
-        cmap="viridis",
-        norm=plt.matplotlib.colors.LogNorm(vmin=1, vmax=stops["weekday_trips"].max()),
-        alpha=0.7,
+        s=2,
+        c="#333333",
+        alpha=0.12,
         linewidths=0,
+        zorder=1,
     )
-    ax.set_title("Brisbane (SEQ) Transit Stops — Weekday Scheduled Trips per Stop")
+
+    ax.set_title("Brisbane (SEQ) Transit Network — Scheduled Route Shapes by Mode")
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     ax.set_aspect("equal")
-    cbar = fig.colorbar(scatter, ax=ax, shrink=0.7)
-    cbar.set_label("Weekday scheduled trips (log scale)")
+    ax.autoscale()
+
+    legend_handles = [
+        Line2D([0], [0], color=color, lw=2.5, label=mode) for mode, color in MODE_COLORS.items()
+    ]
+    ax.legend(handles=legend_handles, loc="upper left", frameon=True, fontsize=9)
+
     fig.tight_layout()
     fig.savefig(IMAGE_PATH)
     plt.close(fig)
@@ -143,7 +206,7 @@ def write_findings(stops: pd.DataFrame, routes: pd.DataFrame) -> None:
         name = row["route_short_name"] or row["route_long_name"]
         lines.append(f"| {name} | {row['mode']} | {int(row['weekday_trips']):,} |")
     lines.append("")
-    lines.append("![Stop frequency map](images/stop_frequency_map.png)")
+    lines.append("![Network map — route shapes by mode](images/network_map.png)")
     lines.append("")
 
     FINDINGS_PATH.write_text("\n".join(lines))
@@ -154,7 +217,10 @@ def main() -> None:
     stops, routes = fetch_data(engine)
     print(f"Fetched {len(stops):,} stops and {len(routes):,} routes with weekday service")
 
-    plot_stop_frequency_map(stops)
+    shapes, shape_modes = fetch_shapes(engine)
+    print(f"Fetched {shapes['shape_id'].nunique():,} route shapes ({len(shapes):,} points)")
+
+    plot_network_map(stops, shapes, shape_modes)
     print(f"Saved map to {IMAGE_PATH}")
 
     write_findings(stops, routes)
