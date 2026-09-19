@@ -73,4 +73,4 @@
 | 61 | Bus | 507 |
 | 222 | Bus | 498 |
 
-![Network map — route shapes by mode](images/network_map.png)
+![Brisbane transit network map — weekday route shapes by mode, zoomed to Greater Brisbane, with the busiest interchanges numbered and a full-SEQ inset for regional context](images/network_map.png)
