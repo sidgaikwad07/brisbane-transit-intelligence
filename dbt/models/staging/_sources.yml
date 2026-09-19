@@ -1,0 +1,18 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: routes
+      - name: trips
+      - name: stops
+      - name: stop_times
+      - name: calendar
+      - name: calendar_dates
+      - name: trip_updates
+        description: Append-only GTFS-RT Trip Update polls — one row per (poll, trip, stop_time_update).
+      - name: vehicle_positions
+        description: Append-only GTFS-RT Vehicle Position polls — one row per (poll, vehicle).
+      - name: service_alerts
+        description: Append-only GTFS-RT Service Alert polls, flattened one row per (poll, alert, informed entity).
