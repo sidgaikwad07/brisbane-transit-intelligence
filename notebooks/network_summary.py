@@ -165,7 +165,7 @@ def _segments_by_mode(shapes: pd.DataFrame, shape_modes: pd.DataFrame) -> dict[s
     return segments_by_mode
 
 
-def compute_metro_bbox(stops: pd.DataFrame, pad_km: float = 15.0) -> tuple[float, float, float, float]:
+def compute_metro_bbox(stops: pd.DataFrame, pad_km: float = 25.0) -> tuple[float, float, float, float]:
     """Greater Brisbane bounding box: the largest contiguous DBSCAN cluster
     of weekday-serving stops (in projected km-space), padded outward.
 
@@ -324,7 +324,7 @@ def _add_info_panel(ax, hubs: pd.DataFrame) -> None:
 
 def _add_mode_legend(ax) -> None:
     legend_handles = [Line2D([0], [0], color=color, lw=3, label=mode) for mode, color in MODE_COLORS.items()]
-    ax.legend(
+    legend = ax.legend(
         handles=legend_handles,
         loc="lower right",
         frameon=True,
@@ -333,6 +333,9 @@ def _add_mode_legend(ax) -> None:
         title_fontsize=9.5,
         borderpad=0.7,
     )
+    legend.set_zorder(11)
+    legend.get_frame().set_facecolor("white")
+    legend.get_frame().set_alpha(1.0)
 
 
 def _add_inset(fig, main_ax_pos, main_bbox: tuple[float, float, float, float], segments_by_mode: dict[str, list]) -> None:
