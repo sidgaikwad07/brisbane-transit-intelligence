@@ -1,10 +1,13 @@
 """Week 1 deliverable: summarize the Brisbane transit network from the loaded
 GTFS static data, and produce a route-shape network map.
 
-"Weekday" is approximated as any service_id active on Monday
-(raw.calendar.monday = true). This ignores calendar_dates exceptions
-(public holidays, one-off changes) — a fine simplification for a network
-overview, but not for anything measuring a specific date's actual service.
+"Weekday" is resolved to one concrete representative date (see
+ingestion.service_calendar), not a bare `calendar.monday = true` flag. The
+naive flag ignores calendar's own start/end date range, so it double- and
+triple-counts trips wherever the feed republishes the same service pattern
+under several overlapping service_ids (school-term calendar rows, or a
+mid-feed timetable correction) — on some corridors that overstated weekday
+trips by 5-6x. Resolving one real date fixes it.
 
 The network map deliberately zooms to Greater Brisbane rather than the full
 SEQ extent. SEQ's TransLink feed actually covers three separate urban bus
@@ -39,6 +42,7 @@ from sklearn.cluster import DBSCAN
 from sqlalchemy import create_engine
 
 from ingestion.config import DATABASE_URL
+from ingestion.service_calendar import active_service_ids, representative_dates
 
 IMAGE_PATH = REPO_ROOT / "docs" / "images" / "network_map.png"
 FINDINGS_PATH = REPO_ROOT / "docs" / "week1_findings.md"
@@ -75,9 +79,8 @@ WEEKDAY_STOP_TRIPS_SQL = """
         count(DISTINCT t.route_id) AS n_routes
     FROM raw.stop_times st
     JOIN raw.trips t ON t.trip_id = st.trip_id
-    JOIN raw.calendar c ON c.service_id = t.service_id
     JOIN raw.stops s ON s.stop_id = st.stop_id
-    WHERE c.monday = true
+    WHERE t.service_id = ANY(%(service_ids)s)
     GROUP BY s.stop_id, s.stop_name, s.stop_lat, s.stop_lon
 """
 
@@ -90,11 +93,12 @@ WEEKDAY_ROUTE_TRIPS_SQL = """
         count(DISTINCT t.trip_id) AS weekday_trips
     FROM raw.trips t
     JOIN raw.routes r ON r.route_id = t.route_id
-    JOIN raw.calendar c ON c.service_id = t.service_id
-    WHERE c.monday = true
+    WHERE t.service_id = ANY(%(service_ids)s)
     GROUP BY r.route_id, r.route_short_name, r.route_long_name, r.route_type
     ORDER BY weekday_trips DESC
 """
+
+TRIPS_PER_SERVICE_SQL = "SELECT service_id, count(*) AS n FROM raw.trips GROUP BY service_id"
 
 MODE_NAMES = {0: "Tram/Light Rail", 2: "Rail", 3: "Bus", 4: "Ferry"}
 
@@ -111,9 +115,23 @@ LINE_STYLE = {
 N_HUBS = 8
 
 
-def fetch_data(engine) -> tuple[pd.DataFrame, pd.DataFrame]:
-    stops = pd.read_sql(WEEKDAY_STOP_TRIPS_SQL, engine)
-    routes = pd.read_sql(WEEKDAY_ROUTE_TRIPS_SQL, engine)
+def pick_weekday_date(engine) -> tuple[object, set[str]]:
+    """A single representative weekday date and its active service_ids —
+    see ingestion.service_calendar for why this replaces a bare
+    `calendar.monday = true` filter.
+    """
+    calendar = pd.read_sql("SELECT * FROM raw.calendar", engine)
+    calendar_dates = pd.read_sql("SELECT * FROM raw.calendar_dates", engine)
+    trips_per_service = pd.read_sql(TRIPS_PER_SERVICE_SQL, engine).set_index("service_id")["n"]
+    weekday_date = representative_dates(calendar, calendar_dates, trips_per_service)["weekday"]
+    service_ids = active_service_ids(calendar, calendar_dates, weekday_date)
+    return weekday_date, service_ids
+
+
+def fetch_data(engine, service_ids: set[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    params = {"service_ids": list(service_ids)}
+    stops = pd.read_sql(WEEKDAY_STOP_TRIPS_SQL, engine, params=params)
+    routes = pd.read_sql(WEEKDAY_ROUTE_TRIPS_SQL, engine, params=params)
     return stops, routes
 
 
@@ -323,7 +341,11 @@ def _add_inset(fig, main_ax_pos, main_bbox: tuple[float, float, float, float], s
 
 
 def plot_network_map(
-    stops: pd.DataFrame, shapes: pd.DataFrame, shape_modes: pd.DataFrame, routes: pd.DataFrame
+    stops: pd.DataFrame,
+    shapes: pd.DataFrame,
+    shape_modes: pd.DataFrame,
+    routes: pd.DataFrame,
+    weekday_date,
 ) -> None:
     IMAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -378,9 +400,9 @@ def plot_network_map(
     fig.text(
         pos.x0,
         pos.y1 + 0.017,
-        f"Weekday scheduled service, zoomed to Greater Brisbane  —  "
-        f"{stops.shape[0]:,} stops · {routes.shape[0]:,} routes · {total_trips:,} weekday trips",
-        fontsize=11.5,
+        f"{weekday_date:%a %d %b %Y} (typical weekday)  —  {stops.shape[0]:,} stops · "
+        f"{routes.shape[0]:,} routes · {total_trips:,} trips",
+        fontsize=11,
         color="#333333",
         ha="left",
         va="bottom",
@@ -403,7 +425,7 @@ def plot_network_map(
     plt.close(fig)
 
 
-def write_findings(stops: pd.DataFrame, routes: pd.DataFrame) -> None:
+def write_findings(stops: pd.DataFrame, routes: pd.DataFrame, weekday_date) -> None:
     top_stops = stops.sort_values("weekday_trips", ascending=False).head(15)
     top_hubs = stops.sort_values("n_routes", ascending=False).head(15)
     top_routes = routes.head(15).copy()
@@ -417,9 +439,18 @@ def write_findings(stops: pd.DataFrame, routes: pd.DataFrame) -> None:
     )
 
     lines = ["# Week 1 findings — Brisbane transit network overview", ""]
-    lines.append(f"- {stops.shape[0]:,} stops with at least one weekday-scheduled trip")
-    lines.append(f"- {routes.shape[0]:,} routes running weekday service")
-    lines.append(f"- {int(routes['weekday_trips'].sum()):,} total weekday scheduled trips")
+    lines.append(
+        f"Figures reflect scheduled service on **{weekday_date:%A, %d %B %Y}**, picked as a "
+        "typical weekday (see `ingestion/service_calendar.py`): the date, among all "
+        "Tuesday/Wednesday/Thursday dates in the feed, whose total scheduled-trip count is "
+        "closest to the median — not just any date with `calendar.monday = true`, which "
+        "double-counts wherever the feed republishes a service under overlapping calendar "
+        "windows (school terms, mid-feed corrections)."
+    )
+    lines.append("")
+    lines.append(f"- {stops.shape[0]:,} stops with at least one scheduled trip that day")
+    lines.append(f"- {routes.shape[0]:,} routes running that day")
+    lines.append(f"- {int(routes['weekday_trips'].sum()):,} total scheduled trips")
     lines.append("")
     lines.append("## Weekday trips by mode")
     lines.append("")
@@ -462,16 +493,20 @@ def write_findings(stops: pd.DataFrame, routes: pd.DataFrame) -> None:
 
 def main() -> None:
     engine = create_engine(DATABASE_URL)
-    stops, routes = fetch_data(engine)
-    print(f"Fetched {len(stops):,} stops and {len(routes):,} routes with weekday service")
+
+    weekday_date, service_ids = pick_weekday_date(engine)
+    print(f"Representative weekday: {weekday_date:%A, %d %b %Y} ({len(service_ids)} active service_ids)")
+
+    stops, routes = fetch_data(engine, service_ids)
+    print(f"Fetched {len(stops):,} stops and {len(routes):,} routes with service that day")
 
     shapes, shape_modes = fetch_shapes(engine)
     print(f"Fetched {shapes['shape_id'].nunique():,} route shapes ({len(shapes):,} points)")
 
-    plot_network_map(stops, shapes, shape_modes, routes)
+    plot_network_map(stops, shapes, shape_modes, routes, weekday_date)
     print(f"Saved map to {IMAGE_PATH}")
 
-    write_findings(stops, routes)
+    write_findings(stops, routes, weekday_date)
     print(f"Saved findings to {FINDINGS_PATH}")
 
 
