@@ -99,7 +99,8 @@ overlapping calendar windows, so a naive `calendar.monday = true` filter oversta
 counts several-fold). Headline numbers: 12,768 stops with scheduled service, 494 routes,
 20,853 scheduled trips (18,926 of them bus).
 
-![SEQ transit network — route shapes by mode](docs/images/network_map.png)
+[![SEQ transit network — route shapes by mode, with the Manly/Lota service gap flagged in orange](docs/images/network_map.png)](docs/manly_lota_service_gap.md)
+*Click the map for the Manly/Lota weekend service-gap case study (flagged in orange, bayside east of the CBD).*
 
 The busiest interchanges by distinct routes served are the South East Busway
 stations — Buranda (47 routes), Griffith University (40), Upper Mt Gravatt (32),

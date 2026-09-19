@@ -114,6 +114,16 @@ LINE_STYLE = {
 
 N_HUBS = 8
 
+# Manly/Lota (bayside, Cleveland Line): flagged on the map as a pointer to
+# the dedicated case study (docs/manly_lota_service_gap.md), which found
+# weekday peak service is fine there but it flatlines to a 30-minute rail
+# headway all day on weekends and a 90-minute bus headway on Sunday
+# mornings — a citywide weekend-frequency pattern this corridor illustrates
+# clearly, not a one-suburb complaint. Point sits midway between Manly and
+# Lota stations, ~1.4km apart on the same line.
+SERVICE_GAP_FLAG = {"label": "Manly / Lota", "lat": -27.4636, "lon": 153.1845}
+FLAG_COLOR = "#eb6834"  # orange — distinct from all four mode colors (esp. Rail's red)
+
 
 def pick_weekday_date(engine) -> tuple[object, set[str]]:
     """A single representative weekday date and its active service_ids —
@@ -267,6 +277,33 @@ def _add_hub_markers(ax, hubs: pd.DataFrame) -> None:
         )
 
 
+def _add_service_gap_flag(ax, flag: dict) -> None:
+    ax.scatter(
+        flag["lon"],
+        flag["lat"],
+        s=170,
+        marker="*",
+        c=FLAG_COLOR,
+        edgecolors="white",
+        linewidths=1.2,
+        zorder=8,
+    )
+    ax.annotate(
+        f"{flag['label']}\nweekend service gap — see case study",
+        xy=(flag["lon"], flag["lat"]),
+        xytext=(62, -8),
+        textcoords="offset points",
+        fontsize=7.8,
+        fontweight="bold",
+        color=FLAG_COLOR,
+        ha="left",
+        va="center",
+        zorder=9,
+        bbox={"boxstyle": "round,pad=0.35", "fc": "white", "ec": FLAG_COLOR, "lw": 1.0, "alpha": 0.95},
+        arrowprops={"arrowstyle": "-", "color": FLAG_COLOR, "lw": 1.0},
+    )
+
+
 def _add_info_panel(ax, hubs: pd.DataFrame) -> None:
     lines = ["Busiest interchanges (by routes served)", ""]
     for i, row in hubs.iterrows():
@@ -368,6 +405,7 @@ def plot_network_map(
 
     hubs = _pick_hubs(stops, bbox, N_HUBS)
     _add_hub_markers(ax, hubs)
+    _add_service_gap_flag(ax, SERVICE_GAP_FLAG)
 
     ax.set_xlim(lon_min, lon_max)
     ax.set_ylim(lat_min, lat_max)
@@ -482,9 +520,14 @@ def write_findings(stops: pd.DataFrame, routes: pd.DataFrame, weekday_date) -> N
         lines.append(f"| {name} | {row['mode']} | {int(row['weekday_trips']):,} |")
     lines.append("")
     lines.append(
-        "![Brisbane transit network map — weekday route shapes by mode, zoomed to Greater "
-        "Brisbane, with the busiest interchanges numbered and a full-SEQ inset for regional "
-        "context](images/network_map.png)"
+        "[![Brisbane transit network map — weekday route shapes by mode, zoomed to Greater "
+        "Brisbane, with the busiest interchanges numbered, the Manly/Lota service gap flagged, "
+        "and a full-SEQ inset for regional context](images/network_map.png)]"
+        "(manly_lota_service_gap.md)"
+    )
+    lines.append(
+        "*Click the map to read the Manly/Lota weekend service-gap case study — flagged in "
+        "orange, bayside east of the CBD.*"
     )
     lines.append("")
 
