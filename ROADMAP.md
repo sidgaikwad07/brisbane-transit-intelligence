@@ -11,11 +11,11 @@ not just code — the goal is a working artifact at every checkpoint.
 - [x] **Demo artifact:** [`docs/week1_findings.md`](docs/week1_findings.md) + stop-frequency map — DONE
 
 ## Week 2 — Live operations
-- [ ] GTFS-Realtime poller (`ingestion/gtfs_realtime_poller.py`) — Trip Updates + Vehicle Positions, protobuf decode, append to Postgres
-- [ ] dbt staging models for realtime tables
-- [ ] Delay + headway calculation (scheduled vs actual)
-- [ ] Detect bunching (two vehicles on the same route within N minutes of each other)
-- **Demo artifact:** on-time performance by route, computed from real polled data (not the official Translink stat — your own measurement)
+- [x] GTFS-Realtime poller (`ingestion/gtfs_realtime_poller.py`) — Trip Updates + Vehicle Positions + Service Alerts, protobuf decode, append to Postgres
+- [x] dbt project scaffolded (`dbt/`) — staging models for routes/trips/trip_updates/vehicle_positions
+- [x] Delay calculation (`mart_stop_delay`, `mart_on_time_performance` — scheduled vs. last-polled predicted arrival)
+- [x] Bunching detection (`mart_bunching_events`, `mart_bunching_by_route` — vehicles on the same route within 400m in the same poll)
+- [ ] **Demo artifact:** on-time performance by route, computed from real polled data (not the official Translink stat — your own measurement) — pipeline validated end-to-end; needs a real collection window running before the numbers mean anything
 
 ## Week 3 — Explaining delay
 - [ ] BCC intersection traffic ingestion
