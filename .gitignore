@@ -5,6 +5,7 @@ venv/
 .env
 data/raw/
 data/interim/
+data/exports/
 *.zip
 .ipynb_checkpoints/
 dbt/target/
