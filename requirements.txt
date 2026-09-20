@@ -28,3 +28,6 @@ dbt-postgres==1.8.2
 # Dev / test
 pytest==8.3.3
 ruff==0.7.4
+
+# Data export (CSV/XLSX)
+openpyxl==3.1.5

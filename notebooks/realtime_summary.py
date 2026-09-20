@@ -39,6 +39,7 @@ REPORT_PATH = REPO_ROOT / "docs" / "week2_findings.md"
 # early, no more than 5 minutes late. Early running is penalised harder
 # because it strands passengers who timed their arrival to the schedule.
 MIN_SAMPLE_SIZE = 30  # minimum stop-visits for a route to appear in a ranking
+MIN_TRIPS = 5  # minimum distinct trips, so one bad/good run can't dominate a route's number
 
 MODE_ORDER = ["Bus", "Rail", "Ferry", "Tram/Light Rail"]
 # dataviz skill's validated categorical palette, fixed order (slots 1-4).
@@ -126,7 +127,7 @@ def plot_otp_by_mode(otp: pd.DataFrame) -> None:
         ax.text(
             rect.get_x() + rect.get_width() / 2,
             row["on_time_pct"] + 1.5,
-            f"{row['on_time_pct']:.0f}%",
+            f"{row['on_time_pct']:.1f}%",
             ha="center",
             fontsize=10,
             fontweight="bold",
@@ -182,7 +183,9 @@ def write_report(
     span_td = (end - start) if (start and end) else None
     span = _format_span(span_td) if span_td is not None else "n/a"
 
-    ranked = otp[otp["n_stop_visits"] >= MIN_SAMPLE_SIZE].sort_values("on_time_pct")
+    ranked = otp[(otp["n_stop_visits"] >= MIN_SAMPLE_SIZE) & (otp["n_trips"] >= MIN_TRIPS)].sort_values(
+        "on_time_pct"
+    )
     worst = ranked.head(15)
     best = ranked.sort_values("on_time_pct", ascending=False).head(15)
 
@@ -211,29 +214,35 @@ def write_report(
         "",
         "![On-time performance by mode](images/week2_on_time_by_mode.png)",
         "",
-        f"## Worst on-time performance (routes with ≥{MIN_SAMPLE_SIZE} stop visits measured)",
+        (
+            f"## Worst on-time performance (routes with ≥{MIN_SAMPLE_SIZE} stop visits "
+            f"across ≥{MIN_TRIPS} distinct trips)"
+        ),
         "",
-        "| Route | Mode | On time | Late | Early | Stop visits |",
-        "|---|---|---|---|---|---|",
+        "| Route | Mode | On time | Late | Early | Stop visits | Trips |",
+        "|---|---|---|---|---|---|---|",
     ]
     for _, row in worst.iterrows():
         name = row["route_short_name"] or row["route_long_name"]
         lines.append(
             f"| {name} | {row['mode']} | {row['on_time_pct']}% | {row['late_pct']}% | "
-            f"{row['early_pct']}% | {int(row['n_stop_visits']):,} |"
+            f"{row['early_pct']}% | {int(row['n_stop_visits']):,} | {int(row['n_trips'])} |"
         )
     lines += [
         "",
-        f"## Best on-time performance (routes with ≥{MIN_SAMPLE_SIZE} stop visits measured)",
+        (
+            f"## Best on-time performance (routes with ≥{MIN_SAMPLE_SIZE} stop visits "
+            f"across ≥{MIN_TRIPS} distinct trips)"
+        ),
         "",
-        "| Route | Mode | On time | Late | Early | Stop visits |",
-        "|---|---|---|---|---|---|",
+        "| Route | Mode | On time | Late | Early | Stop visits | Trips |",
+        "|---|---|---|---|---|---|---|",
     ]
     for _, row in best.iterrows():
         name = row["route_short_name"] or row["route_long_name"]
         lines.append(
             f"| {name} | {row['mode']} | {row['on_time_pct']}% | {row['late_pct']}% | "
-            f"{row['early_pct']}% | {int(row['n_stop_visits']):,} |"
+            f"{row['early_pct']}% | {int(row['n_stop_visits']):,} | {int(row['n_trips'])} |"
         )
 
     lines += [
@@ -267,8 +276,11 @@ def write_report(
             "the ranking as directional, not exact."
         ),
         (
-            f"- Route rankings only include routes with ≥{MIN_SAMPLE_SIZE} stop visits measured "
-            "in this window, to avoid a route with 2 lucky (or unlucky) observations topping the list."
+            f"- Route rankings only include routes with ≥{MIN_SAMPLE_SIZE} stop visits "
+            f"**across ≥{MIN_TRIPS} distinct trips**. Stop visits alone aren't enough: a "
+            "low-frequency route can rack up dozens of stop visits from a single catastrophically "
+            "delayed trip cascading down its stop sequence, making one bad run look like a "
+            "systemically unreliable route. Requiring several independent trips guards against that."
         ),
         (
             "- A short collection window skews toward whatever was running when it was collected "

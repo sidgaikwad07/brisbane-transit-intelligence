@@ -15,7 +15,7 @@ not just code — the goal is a working artifact at every checkpoint.
 - [x] dbt project scaffolded (`dbt/`) — staging models for routes/trips/trip_updates/vehicle_positions
 - [x] Delay calculation (`mart_stop_delay`, `mart_on_time_performance` — scheduled vs. last-polled predicted arrival)
 - [x] Bunching detection (`mart_bunching_events`, `mart_bunching_by_route` — vehicles on the same route within 400m in the same poll)
-- [ ] **Demo artifact:** on-time performance by route, computed from real polled data (not the official Translink stat — your own measurement) — pipeline validated end-to-end; needs a real collection window running before the numbers mean anything
+- [x] **Demo artifact:** [`docs/week2_findings.md`](docs/week2_findings.md) — on-time performance by route + bunching, from a ~26h real collection window (285K stop visits) — DONE
 
 ## Week 3 — Explaining delay
 - [ ] BCC intersection traffic ingestion
