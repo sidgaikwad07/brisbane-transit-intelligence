@@ -125,9 +125,12 @@ Full breakdown in [`docs/week2_findings.md`](docs/week2_findings.md), generated 
 [`notebooks/realtime_summary.py`](notebooks/realtime_summary.py) from
 [`ingestion/gtfs_realtime_poller.py`](ingestion/gtfs_realtime_poller.py)'s own polled
 GTFS-Realtime data — not Translink's official on-time stat — via dbt marts in
-[`dbt/`](dbt/). From a ~26-hour collection window (285K stop visits measured): **70.4%
-on-time citywide**, with rail (86%) and the Gold Coast light rail (99.8%) running far more
-reliably than bus (69%) or ferry (33%). Route rankings require ≥5 distinct trips before
+[`dbt/`](dbt/). From a ~65-hour collection window spanning both weekend and weekday service
+(586K stop visits measured): **69.6% on-time citywide**, with rail (86%) and the Gold Coast
+light rail (99%) running far more reliably than bus (68%) or ferry (32%). Split by day type,
+**weekday runs slightly less punctually than weekend (68.6% vs. 70.5%)** but with the
+opposite failure mode — weekday skews toward early running (19.4% vs. 13.2%), weekend
+toward late running (16.3% vs. 12.0%). Route rankings require ≥5 distinct trips before
 counting, so one catastrophically delayed run can't make a low-frequency route look
 systemically unreliable. Raw and summarized data is exportable to CSV/XLSX via
 [`notebooks/export_week2_data.py`](notebooks/export_week2_data.py).
