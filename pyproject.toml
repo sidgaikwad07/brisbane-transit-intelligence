@@ -4,3 +4,10 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 110
+
+[tool.ruff.lint.per-file-ignores]
+# Standalone scripts run as `python notebooks/foo.py` (not installed as a
+# package), so each needs sys.path.insert(REPO_ROOT) before it can import
+# the local `ingestion` package — that necessarily puts a statement before
+# some imports. Deliberate, not an import-ordering mistake.
+"notebooks/*.py" = ["E402"]
