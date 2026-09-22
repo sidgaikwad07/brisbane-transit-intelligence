@@ -166,3 +166,25 @@ CREATE TABLE IF NOT EXISTS raw.weather_daily (
     temp_max_c   DOUBLE PRECISION,
     wind_kph     DOUBLE PRECISION
 );
+
+-- Queensland Government open data: monthly aggregated smart-card (go card/
+-- EMV) + paper-ticket origin-destination trip counts. One row per (operator,
+-- month, route, direction, time_grouping, ticket_type, origin_stop,
+-- destination_stop) with the trip count in `quantity` — already aggregated
+-- by TransLink, not individual taps. https://www.data.qld.gov.au/dataset/translink-origin-destination-trips-2022-onwards
+CREATE TABLE IF NOT EXISTS raw.od_trips (
+    id               BIGSERIAL PRIMARY KEY,
+    operator         TEXT,
+    month            DATE,
+    route            TEXT,
+    direction        TEXT,
+    time_grouping    TEXT,
+    ticket_type      TEXT,
+    origin_stop      TEXT,
+    destination_stop TEXT,
+    quantity         INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_od_trips_month ON raw.od_trips (month);
+CREATE INDEX IF NOT EXISTS idx_od_trips_route ON raw.od_trips (route);
+CREATE INDEX IF NOT EXISTS idx_od_trips_origin ON raw.od_trips (origin_stop);
+CREATE INDEX IF NOT EXISTS idx_od_trips_dest ON raw.od_trips (destination_stop);

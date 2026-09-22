@@ -23,4 +23,12 @@ BCC_TRAFFIC_API_URL = (
     "traffic-data-at-intersection/records"
 )
 
+# Queensland Government open data (CKAN) — monthly aggregated go card/EMV/
+# paper-ticket origin-destination trip counts, Jan 2022 onwards.
+# https://www.data.qld.gov.au/dataset/translink-origin-destination-trips-2022-onwards
+OD_TRIPS_CKAN_PACKAGE_URL = (
+    "https://www.data.qld.gov.au/api/3/action/package_show"
+    "?id=translink-origin-destination-trips-2022-onwards"
+)
+
 RAW_DATA_DIR = "data/raw"

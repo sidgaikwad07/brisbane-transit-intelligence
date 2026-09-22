@@ -16,3 +16,8 @@ sources:
         description: Append-only GTFS-RT Vehicle Position polls — one row per (poll, vehicle).
       - name: service_alerts
         description: Append-only GTFS-RT Service Alert polls, flattened one row per (poll, alert, informed entity).
+      - name: od_trips
+        description: >
+          Queensland Government monthly aggregated go card/EMV/paper-ticket origin-destination
+          trip counts (already aggregated by TransLink, not individual taps).
+          https://www.data.qld.gov.au/dataset/translink-origin-destination-trips-2022-onwards
