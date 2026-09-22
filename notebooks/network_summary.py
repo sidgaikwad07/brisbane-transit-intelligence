@@ -114,14 +114,16 @@ LINE_STYLE = {
 
 N_HUBS = 8
 
-# Manly/Lota (bayside, Cleveland Line): flagged on the map as a pointer to
-# the dedicated case study (docs/manly_lota_service_gap.md), which found
-# weekday peak service is fine there but it flatlines to a 30-minute rail
-# headway all day on weekends and a 90-minute bus headway on Sunday
-# mornings — a citywide weekend-frequency pattern this corridor illustrates
-# clearly, not a one-suburb complaint. Point sits midway between Manly and
-# Lota stations, ~1.4km apart on the same line.
-SERVICE_GAP_FLAG = {"label": "Manly / Lota", "lat": -27.4636, "lon": 153.1845}
+# Manly/Lota/Cleveland (bayside, Cleveland Line): flagged on the map as a
+# pointer to the dedicated case study (docs/manly_lota_service_gap.md),
+# which found weekday peak service is fine but it flatlines to a 30-minute
+# rail headway on weekends, real ridership data shows the corridor's two
+# main bus routes (220/227) genuinely under-provisioned relative to demand
+# (top-5th-percentile demand pressure citywide), while the route-length
+# complaint turned out to be a citywide routing pattern, not unique here.
+# Point sits midway between Manly and Lota stations, ~1.4km apart on the
+# same line — the label covers the wider corridor down to Cleveland.
+SERVICE_GAP_FLAG = {"label": "Manly / Lota / Cleveland", "lat": -27.4636, "lon": 153.1845}
 FLAG_COLOR = "#eb6834"  # orange — distinct from all four mode colors (esp. Rail's red)
 
 
@@ -524,13 +526,13 @@ def write_findings(stops: pd.DataFrame, routes: pd.DataFrame, weekday_date) -> N
     lines.append("")
     lines.append(
         "[![Brisbane transit network map — weekday route shapes by mode, zoomed to Greater "
-        "Brisbane, with the busiest interchanges numbered, the Manly/Lota service gap flagged, "
-        "and a full-SEQ inset for regional context](images/network_map.png)]"
+        "Brisbane, with the busiest interchanges numbered, the Manly/Lota/Cleveland service gap "
+        "flagged, and a full-SEQ inset for regional context](images/network_map.png)]"
         "(manly_lota_service_gap.md)"
     )
     lines.append(
-        "*Click the map to read the Manly/Lota weekend service-gap case study — flagged in "
-        "orange, bayside east of the CBD.*"
+        "*Click the map to read the Manly/Lota/Cleveland service-gap case study — flagged in "
+        "orange, bayside east/southeast of the CBD.*"
     )
     lines.append("")
 
