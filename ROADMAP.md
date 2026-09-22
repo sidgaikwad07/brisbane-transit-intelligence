@@ -17,6 +17,18 @@ not just code — the goal is a working artifact at every checkpoint.
 - [x] Bunching detection (`mart_bunching_events`, `mart_bunching_by_route` — vehicles on the same route within 400m in the same poll)
 - [x] **Demo artifact:** [`docs/week2_findings.md`](docs/week2_findings.md) — on-time performance by route + bunching, from a ~26h real collection window (285K stop visits) — DONE
 
+## Demand intelligence (added — not in the original 4-week plan)
+- [x] Queensland Government open-data discovery: monthly aggregated go card/EMV/paper-ticket
+  origin-destination trip counts exist and are public (CC BY 4.0) — this was assumed unavailable
+  in the original scoping (see "out of scope" below, now outdated on this point)
+- [x] `ingestion/od_trips.py` — loads N most recent months from data.qld.gov.au
+- [x] dbt marts: `mart_od_demand_by_route`, `mart_od_demand_by_time`, `mart_od_top_pairs`
+- [x] Real ridership joined against GTFS scheduled trips → riders-per-scheduled-trip by route
+- [x] **Demo artifact:** [`docs/demand_intelligence_findings.md`](docs/demand_intelligence_findings.md) — DONE
+- [ ] Longer-term: this unlocks a genuine demand/supply "decision engine" framing (route
+  planning via RAPTOR, capacity gap identification, scenario comparison) — scoped as a
+  separate, larger initiative once this foundation is proven; not committed to yet
+
 ## Week 3 — Explaining delay
 - [ ] BCC intersection traffic ingestion
 - [ ] Join traffic volume to nearby delayed trips (spatial join via PostGIS)
@@ -33,5 +45,9 @@ not just code — the goal is a working artifact at every checkpoint.
 
 ## Explicitly out of scope (for this version)
 Airflow, dbt Cloud, cloud data warehouse, live public hosting, demand
-forecasting, accessibility index, scenario simulator. These are natural
-follow-ups if the project gets traction, not requirements for v1.
+*forecasting* (predicting future demand — distinct from the real historical
+ridership now in scope via the OD dataset above), accessibility index,
+scenario simulator, and anything requiring non-public data (fleet size,
+vehicle capacity, per-service operating cost, driver rostering — needed for
+real optimization/simulation, not available as open data). These are
+natural follow-ups if the project gets traction, not requirements for v1.
