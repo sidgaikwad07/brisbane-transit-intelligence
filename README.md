@@ -160,6 +160,19 @@ timetable is dense. Also exportable to CSV/XLSX via
 
 ![Busiest routes by real ridership](docs/images/demand_vs_supply.png)
 
+## Priority routes — where demand and unreliability overlap
+
+Full breakdown in [`docs/priority_routes_findings.md`](docs/priority_routes_findings.md), generated
+by [`notebooks/priority_routes.py`](notebooks/priority_routes.py) — the synthesis every other finding
+here stopped short of: real ridership crossed with measured on-time performance, since a route
+that's both heavily used *and* unreliable affects far more riders per late arrival than either
+problem alone. **SMBI** (the Southern Moreton Bay Islands ferry) tops the list — 5,208 riders/weekday
+at the 100th percentile of demand, running on-time only 38% of the time (2nd percentile reliability
+citywide). Routes 220 and 227 from the Manly/Lota/Cleveland case study independently show up in this
+citywide top 15 too, confirming that case study's finding holds beyond just that corridor.
+
+![Where should Translink act first?](docs/images/priority_routes.png)
+
 ## Project layout
 
 ```text
