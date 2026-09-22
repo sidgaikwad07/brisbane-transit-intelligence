@@ -25,9 +25,13 @@ not just code — the goal is a working artifact at every checkpoint.
 - [x] dbt marts: `mart_od_demand_by_route`, `mart_od_demand_by_time`, `mart_od_top_pairs`
 - [x] Real ridership joined against GTFS scheduled trips → riders-per-scheduled-trip by route
 - [x] **Demo artifact:** [`docs/demand_intelligence_findings.md`](docs/demand_intelligence_findings.md) — DONE
-- [ ] Longer-term: this unlocks a genuine demand/supply "decision engine" framing (route
-  planning via RAPTOR, capacity gap identification, scenario comparison) — scoped as a
-  separate, larger initiative once this foundation is proven; not committed to yet
+- [x] First capacity-gap synthesis: [`docs/priority_routes_findings.md`](docs/priority_routes_findings.md)
+  (`notebooks/priority_routes.py`) — crosses real demand against measured reliability citywide;
+  surfaced SMBI ferry (100th percentile demand, 2nd percentile reliability) as the single
+  highest-priority route in the network, and independently confirmed the Manly/Lota/Cleveland
+  case study's routes 220/227 in the citywide top 15
+- [ ] Longer-term: route planning via RAPTOR (+ live-delay layering), scenario comparison —
+  scoped as a separate, larger initiative once this foundation is proven; not committed to yet
 
 ## Week 3 — Explaining delay
 - [ ] BCC intersection traffic ingestion
