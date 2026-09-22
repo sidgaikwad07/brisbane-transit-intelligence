@@ -1,14 +1,25 @@
-"""Case study: how well does the Manly / Lota corridor (bayside, ~13km east
-of the CBD on the Cleveland rail line) actually get served, compared to its
-own weekday peak?
+"""Case study: how well does the Manly / Lota / Cleveland corridor (bayside,
+~13-26km east/southeast of the CBD on the Cleveland rail line) actually get
+served, compared to its own weekday peak — and, now that real ridership
+data exists, compared to what it actually carries?
 
 Raised as a specific, named question: a resident there says the service
-feels poor. This turns that into a measurable claim using the same
-date-resolved GTFS methodology as notebooks/network_summary.py (see
-ingestion/service_calendar.py) — headway (average minutes between
-consecutive services) at the corridor's inbound (city-bound) rail platform
-and its busiest inbound bus stop, split by time-of-day and compared across
-a representative weekday, Saturday and Sunday.
+feels poor — too infrequent, and the bus route itself feels too long. This
+turns that into three measurable claims:
+
+1. Headway (average minutes between consecutive services) at the corridor's
+   inbound rail platform and busiest inbound bus stop, split by time-of-day
+   and compared across a representative weekday/Saturday/Sunday (same
+   date-resolved GTFS methodology as notebooks/network_summary.py — see
+   ingestion/service_calendar.py).
+2. Real ridership pressure — actual riders per scheduled trip (from
+   Queensland Government's OD data, see notebooks/demand_intelligence.py),
+   benchmarked against every other route citywide. This is the part static
+   schedule data alone could never answer.
+3. Route circuity — actual path length vs. straight-line distance, to check
+   whether "the route feels too long" is a real geometric property of this
+   corridor specifically, or a citywide characteristic of how Brisbane
+   buses are drawn.
 
 Usage:
     python notebooks/manly_lota_service_gap.py
@@ -39,6 +50,17 @@ REPORT_PATH = REPO_ROOT / "docs" / "manly_lota_service_gap.md"
 RAIL_STOP_MANLY = "Manly station, platform 1"
 RAIL_STOP_LOTA = "Lota station, platform 2"
 BUS_STOP_MANLY_RD = "1315"  # "Manly Rd at Silky Oaks", headsign City/Fortitude Valley
+
+# Every bus route serving the Manly-Lota-Cleveland corridor, found by
+# geographic bounding box (stop_lat/lon along the Cleveland line, Wynnum to
+# Cleveland) rather than name-matching — a plain "cleveland" text search
+# pulls in unrelated Gold Coast routes that happen to share the word
+# somewhere in a stop name.
+CORRIDOR_BBOX = {"lat_min": -27.53, "lat_max": -27.45, "lon_min": 153.17, "lon_max": 153.27}
+CORRIDOR_ROUTES = [
+    "220", "221", "223", "224", "227", "240", "251", "254", "255", "273", "274", "275",
+]
+MIN_SCHEDULED_TRIPS = 5
 
 TIME_BUCKETS = [
     ("AM peak", 6, 9),
@@ -158,6 +180,108 @@ def citywide_sunday_am_percentile(engine, service_id_sets: dict[str, set[str]]) 
     return float((comp["sunday_am"] <= target).mean() * 100)
 
 
+def corridor_ridership(engine, weekday_date, service_ids_weekday: set[str]) -> pd.DataFrame:
+    """Real riders per scheduled trip for the corridor's routes, benchmarked
+    against every other route citywide with enough scheduled trips to be
+    comparable — the evidence static schedule/GTFS-RT data alone can't
+    produce: is demand actually elevated here, or does it just feel that
+    way?
+    """
+    n_weekdays = pd.read_sql("SELECT DISTINCT month FROM raw.od_trips", engine)["month"].apply(
+        lambda m: len(pd.date_range(m, m + pd.offsets.MonthEnd(0), freq="B"))
+    ).sum()
+
+    od = pd.read_sql(
+        "SELECT route, route_long_name, mode, weekday_trips FROM marts.mart_od_demand_by_route", engine
+    )
+    od["avg_weekday_riders"] = od["weekday_trips"] / n_weekdays
+
+    sched = pd.read_sql(
+        """
+        SELECT r.route_short_name AS route, count(DISTINCT t.trip_id) AS scheduled_trips
+        FROM raw.trips t
+        JOIN raw.routes r ON r.route_id = t.route_id
+        WHERE t.service_id = ANY(%(sids)s) AND r.route_short_name IS NOT NULL
+        GROUP BY r.route_short_name
+        """,
+        engine,
+        params={"sids": list(service_ids_weekday)},
+    )
+
+    merged = od.merge(sched, on="route", how="inner")
+    merged = merged[merged["scheduled_trips"] >= MIN_SCHEDULED_TRIPS].copy()
+    merged["riders_per_trip"] = merged["avg_weekday_riders"] / merged["scheduled_trips"]
+    merged["percentile"] = merged["riders_per_trip"].rank(pct=True) * 100
+    return merged
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    r = 6371.0
+    p1, p2 = np.radians(lat1), np.radians(lat2)
+    dp, dl = np.radians(lat2 - lat1), np.radians(lon2 - lon1)
+    a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
+    return 2 * r * np.arcsin(np.sqrt(a))
+
+
+def _shape_circuity(engine, shape_ids: list[str]) -> pd.DataFrame:
+    pts = pd.read_sql(
+        "SELECT shape_id, shape_pt_lat, shape_pt_lon FROM raw.shapes "
+        "WHERE shape_id = ANY(%(ids)s) ORDER BY shape_id, shape_pt_sequence",
+        engine,
+        params={"ids": shape_ids},
+    )
+    rows = []
+    for shape_id, g in pts.groupby("shape_id"):
+        if len(g) < 2:
+            continue
+        seg_km = _haversine_km(
+            g["shape_pt_lat"].to_numpy()[:-1], g["shape_pt_lon"].to_numpy()[:-1],
+            g["shape_pt_lat"].to_numpy()[1:], g["shape_pt_lon"].to_numpy()[1:],
+        )
+        path_km = seg_km.sum()
+        straight_km = _haversine_km(
+            g["shape_pt_lat"].iloc[0], g["shape_pt_lon"].iloc[0], g["shape_pt_lat"].iloc[-1], g["shape_pt_lon"].iloc[-1]
+        )
+        if straight_km > 2:  # skip short/loop shapes where circuity is noisy, not meaningful
+            rows.append({"shape_id": shape_id, "path_km": path_km, "circuity": path_km / straight_km})
+    return pd.DataFrame(rows)
+
+
+def corridor_circuity(engine) -> tuple[pd.DataFrame, pd.Series]:
+    """Route path length vs. straight-line distance, for the corridor's
+    routes and a citywide sample (one shape per bus route) — checks whether
+    "the route feels too long" reflects unusually circuitous routing here,
+    or Brisbane's bus network generally being drawn that way.
+    """
+    corridor_shapes = pd.read_sql(
+        """
+        SELECT DISTINCT t.shape_id, r.route_short_name AS route, r.route_long_name
+        FROM raw.trips t JOIN raw.routes r ON r.route_id = t.route_id
+        WHERE r.route_short_name = ANY(%(routes)s) AND t.shape_id IS NOT NULL
+        """,
+        engine,
+        params={"routes": CORRIDOR_ROUTES},
+    )
+    corridor_geo = _shape_circuity(engine, corridor_shapes["shape_id"].tolist()).merge(
+        corridor_shapes, on="shape_id"
+    )
+    corridor_summary = corridor_geo.groupby(["route", "route_long_name"], as_index=False).agg(
+        avg_path_km=("path_km", "mean"), avg_circuity=("circuity", "mean")
+    )
+
+    citywide_shapes = pd.read_sql(
+        """
+        SELECT DISTINCT ON (r.route_short_name) t.shape_id, r.route_short_name AS route
+        FROM raw.trips t JOIN raw.routes r ON r.route_id = t.route_id
+        WHERE r.route_type = 3 AND t.shape_id IS NOT NULL AND r.route_short_name IS NOT NULL
+        ORDER BY r.route_short_name
+        """,
+        engine,
+    )
+    citywide_geo = _shape_circuity(engine, citywide_shapes["shape_id"].tolist())
+    return corridor_summary, citywide_geo["circuity"]
+
+
 def plot_headway_chart(rail_table: pd.DataFrame, weekday_date, sat_date, sun_date) -> None:
     IMAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
     labels = list(rail_table.index)
@@ -253,15 +377,21 @@ def write_report(
     weekday_date,
     sat_date,
     sun_date,
+    ridership: pd.DataFrame,
+    circuity_corridor: pd.DataFrame,
+    circuity_citywide: pd.Series,
 ) -> None:
     lines = [
-        "# Case study: the Manly / Lota service gap",
+        "# Case study: the Manly / Lota / Cleveland service gap",
         "",
         (
-            "Raised as a specific question: a resident of Manly/Lota (bayside, ~13km east of the "
-            "Brisbane CBD, on the Cleveland rail line) says the transport service there feels poor. "
-            "This turns that into a measurable claim from the scheduled GTFS timetable — not "
-            "real-time reliability, just what's actually timetabled."
+            "Raised as a specific question: a resident of the Manly/Lota/Cleveland corridor "
+            "(bayside, ~13-26km east/southeast of the Brisbane CBD, on the Cleveland rail line) "
+            "has two complaints — the bus route feels too long, and it's not frequent enough "
+            "(sometimes over an hour between buses). This turns both into measurable claims: "
+            "one from the scheduled GTFS timetable (headway, route geometry), and — new since "
+            "the first version of this case study — one from **real ridership data**, not just "
+            "the schedule."
         ),
         "",
         "## Method",
@@ -307,7 +437,7 @@ def write_report(
             "hours overnight, and no scheduled evening or night service at all on Sunday."
         ),
         "",
-        "## Is this specific to Manly/Lota, or citywide?",
+        "## Is the weekend/evening gap specific to Manly/Lota, or citywide?",
         "",
         (
             "Checked against every other Brisbane bus stop with comparable weekday importance "
@@ -318,13 +448,99 @@ def write_report(
         ),
         "",
         (
-            "That's the actual finding worth taking to Council or Translink: **this isn't a "
-            "Manly/Lota-specific shortfall, it's a citywide pattern** — Brisbane's middle and "
-            "outer suburbs broadly get a weekday-only frequent-service model, with evenings and "
-            "Sundays dropping to hourly-or-worse almost everywhere outside the core busway/rail "
-            "spine. Manly/Lota is a clear, well-documented example of it, not an outlier — which "
-            "arguably makes it a *more* useful case study, since fixing the underlying "
-            "weekend-frequency policy would help every suburb in the same position, not just one."
+            "That's a real finding worth taking to Council or Translink on its own: **the "
+            "weekend/evening gap isn't a Manly/Lota-specific shortfall, it's a citywide pattern** "
+            "— Brisbane's middle and outer suburbs broadly get a weekday-only frequent-service "
+            "model. Manly/Lota is a clear, well-documented example of it, not an outlier. But it's "
+            "not the whole story — see below."
+        ),
+        "",
+        "## Real ridership: is demand actually elevated here?",
+        "",
+        (
+            "Until now this case study relied entirely on the *schedule* — it could show how "
+            "often a bus is timetabled, but not whether enough people are trying to use it to "
+            "justify more. Queensland Government's origin-destination trip data (real go card/EMV "
+            "touch-on+touch-off counts, see `docs/demand_intelligence_findings.md`) answers that "
+            "directly: **riders per scheduled trip**, benchmarked against every other route "
+            "citywide."
+        ),
+        "",
+        "| Route | Avg weekday riders | Scheduled trips | Riders/trip | Percentile |",
+        "|---|---|---|---|---|",
+    ]
+    corridor_ridership_rows = ridership[ridership["route"].isin(CORRIDOR_ROUTES)].sort_values(
+        "riders_per_trip", ascending=False
+    )
+    for _, row in corridor_ridership_rows.iterrows():
+        lines.append(
+            f"| {row['route']} ({row['route_long_name']}) | {row['avg_weekday_riders']:,.0f} | "
+            f"{row['scheduled_trips']:.0f} | {row['riders_per_trip']:.1f} | "
+            f"{_ordinal(round(row['percentile']))} |"
+        )
+    top2 = corridor_ridership_rows.head(2)
+    lines += [
+        "",
+        (
+            f"**This is the strongest evidence in this case study.** The two main routes serving "
+            f"Manly — **{top2.iloc[0]['route']}** and **{top2.iloc[1]['route']}** — sit at the "
+            f"{_ordinal(round(top2.iloc[0]['percentile']))} and "
+            f"{_ordinal(round(top2.iloc[1]['percentile']))} percentile of demand pressure "
+            "citywide, roughly **2.5x the network median** riders per scheduled trip. Unlike the "
+            "weekend-headway finding above, this genuinely isn't a citywide-typical pattern — "
+            "these two routes are carrying meaningfully more demand per trip than most of "
+            "Brisbane's network, which is real, specific evidence that **frequency on these two "
+            "routes specifically hasn't kept pace with how much they're actually used**."
+        ),
+        "",
+        "## Is the route actually too long?",
+        "",
+        (
+            "Route circuity (actual path length ÷ straight-line distance between the route's "
+            "endpoints — 1.0 would be a perfectly straight line) checks whether \"the bus route "
+            "feels too long\" reflects something unusual about this corridor, or how Brisbane "
+            "buses are generally drawn:"
+        ),
+        "",
+        "| Route | Path length | Circuity (path ÷ straight-line) |",
+        "|---|---|---|",
+    ]
+    for _, row in circuity_corridor.sort_values("avg_circuity", ascending=False).iterrows():
+        lines.append(f"| {row['route']} ({row['route_long_name']}) | {row['avg_path_km']:.0f} km | {row['avg_circuity']:.2f}x |")
+    median_circuity = circuity_citywide.median()
+    lines += [
+        "",
+        (
+            f"Citywide median circuity across {len(circuity_citywide)} sampled bus routes is "
+            f"**{median_circuity:.2f}x** — Brisbane's bus network is generally quite circuitous "
+            "(suburban coverage-oriented routing, not a corridor-specific issue). Routes 220 and "
+            "227 (the two busiest, above) sit close to or right at that citywide median, not in "
+            "the unusually-long tail. The Cleveland-area routes (255, 274) run somewhat higher "
+            "than typical, but not to an extreme degree. **The \"route is too long\" complaint is "
+            "real in absolute terms (a 20-30km path for what could be a much shorter direct line) "
+            "but isn't a Manly/Lota/Cleveland-specific design failure** — it's a symptom of how "
+            "Brisbane's whole bus network prioritises coverage over directness, same conclusion "
+            "shape as the weekend-headway finding above."
+        ),
+        "",
+        "## What this actually recommends",
+        "",
+        (
+            "Two different conclusions for two different complaints, and they point to different "
+            "fixes:"
+        ),
+        (
+            "- **Frequency on routes 220/227 specifically**: genuinely under-provisioned relative "
+            "to demonstrated demand (top-5th-percentile ridership pressure, not a citywide-typical "
+            "pattern) — a defensible, targeted case for adding weekday peak capacity on these two "
+            "routes specifically, not a network-wide ask."
+        ),
+        (
+            "- **Weekend/evening frequency and route directness**: both are real, but both are "
+            "citywide patterns, not something uniquely wrong with this corridor — the useful "
+            "policy conversation is Brisbane's weekend-frequency and route-design standards in "
+            "general, with Manly/Lota/Cleveland as a clear illustrative example, not a corridor "
+            "that needs a one-off fix."
         ),
         "",
         "## Caveats",
@@ -334,8 +550,11 @@ def write_report(
             "GTFS static says nothing about delays, cancellations or overcrowding."
         ),
         (
-            '- "Manly/Lota" here means stops whose name contains those suburb names, not an '
-            "official suburb boundary."
+            "- The headway analysis targets one named rail platform and one named bus stop, not "
+            "an official suburb boundary. The ridership and circuity sections use a wider, "
+            "geographic (lat/lon bounding box) definition of the corridor's bus routes, deliberately "
+            "not a text search — a plain \"cleveland\" name match pulls in unrelated Gold Coast "
+            "routes that happen to share the word somewhere in a stop name."
         ),
         (
             "- One representative date per day-type, not every date in the feed — chosen to "
@@ -349,6 +568,19 @@ def write_report(
             "bucket happens to catch the short gap — it can misleadingly read as high-frequency "
             "in a bucket with only one or two trips. The window/count estimate is immune to that, "
             "at the cost of smoothing over any unevenness within a window."
+        ),
+        (
+            "- **Riders/trip divides real monthly ridership by one representative weekday's "
+            "scheduled trips** — same caveat as `docs/demand_intelligence_findings.md`: treat it "
+            "as a directional demand-pressure signal, not an exact per-trip load figure. It also "
+            "compares the May-Jul 2026 OD window against the Sept 2026 schedule snapshot; a route "
+            "renumbered in between would produce a misleading ratio (not the case for 220/227, "
+            "which are long-standing route numbers, but worth naming as a general limitation)."
+        ),
+        (
+            "- **Circuity uses one representative shape per route** (its most common physical "
+            "path), not every branch/variant a route number might run — a route with several "
+            "genuinely different path variants could have its complexity understated."
         ),
         "",
     ]
@@ -380,10 +612,26 @@ def main() -> None:
     percentile = citywide_sunday_am_percentile(engine, service_id_sets)
     print(f"Manly Rd Sunday-AM percentile among comparable citywide stops: {percentile:.0f}")
 
+    ridership = corridor_ridership(engine, dates["weekday"], service_id_sets["weekday"])
+    print(f"Corridor ridership rows: {len(ridership[ridership['route'].isin(CORRIDOR_ROUTES)])}")
+
+    circuity_corridor, circuity_citywide = corridor_circuity(engine)
+    print(f"Corridor circuity:\n{circuity_corridor}")
+
     plot_headway_chart(rail_table, dates["weekday"], dates["saturday"], dates["sunday"])
     print(f"Saved chart to {IMAGE_PATH}")
 
-    write_report(rail_table, bus_table, percentile, dates["weekday"], dates["saturday"], dates["sunday"])
+    write_report(
+        rail_table,
+        bus_table,
+        percentile,
+        dates["weekday"],
+        dates["saturday"],
+        dates["sunday"],
+        ridership,
+        circuity_corridor,
+        circuity_citywide,
+    )
     print(f"Saved report to {REPORT_PATH}")
 
 

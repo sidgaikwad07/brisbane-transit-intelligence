@@ -75,5 +75,5 @@ Figures reflect scheduled service on **Thursday, 17 September 2026**, picked as 
 | 100 | Bus | 165 |
 | 196 | Bus | 162 |
 
-[![Brisbane transit network map — weekday route shapes by mode, zoomed to Greater Brisbane, with the busiest interchanges numbered, the Manly/Lota service gap flagged, and a full-SEQ inset for regional context](images/network_map.png)](manly_lota_service_gap.md)
-*Click the map to read the Manly/Lota weekend service-gap case study — flagged in orange, bayside east of the CBD.*
+[![Brisbane transit network map — weekday route shapes by mode, zoomed to Greater Brisbane, with the busiest interchanges numbered, the Manly/Lota/Cleveland service gap flagged, and a full-SEQ inset for regional context](images/network_map.png)](manly_lota_service_gap.md)
+*Click the map to read the Manly/Lota/Cleveland service-gap case study — flagged in orange, bayside east/southeast of the CBD.*
