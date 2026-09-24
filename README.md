@@ -90,6 +90,26 @@ python -m ingestion.gtfs_realtime_poller  # polls live feeds (Ctrl+C to stop)
 python -m ingestion.od_trips              # loads the 3 most recent months of real ridership
 ```
 
+### Running the poller as a background service (macOS)
+
+The poller needs to run for hours/days to collect anything meaningful, which makes "leave a
+terminal open with Ctrl+C to stop" impractical. `scripts/install_poller_service.sh` installs it as
+a macOS LaunchAgent instead — starts on login, restarts automatically if it ever crashes (tested:
+`kill -KILL` on the process, back up and polling within ~20s):
+
+```bash
+scripts/install_poller_service.sh     # install + start
+launchctl list | grep brisbane-transit  # check it's running
+tail -f logs/poller.log                 # watch it poll
+scripts/uninstall_poller_service.sh   # stop + remove
+```
+
+This doesn't fix the one real failure mode that's actually hit collection (the machine going to
+sleep — no software fixes that), it just means nobody has to notice and manually restart the
+process afterward. The plist is generated from
+[`scripts/poller_service/com.brisbane-transit.poller.plist.template`](scripts/poller_service/com.brisbane-transit.poller.plist.template),
+not committed with machine-specific paths baked in.
+
 ### Regenerating everything
 
 Once the poller's been running a while and `od_trips` is loaded, one command regenerates every

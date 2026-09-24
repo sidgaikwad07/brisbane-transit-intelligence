@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import time
 from datetime import datetime, timezone
 
@@ -192,7 +193,17 @@ def poll_once(engine: Engine) -> dict[str, int]:
     return counts
 
 
+def _handle_sigterm(signum, frame) -> None:
+    # Only SIGINT (Ctrl+C) is a KeyboardInterrupt by default. Running as a
+    # launchd service means stop/restart cycles send SIGTERM instead — raise
+    # the same exception so it takes the identical clean-shutdown path
+    # (log the summary, exit 0) rather than being killed mid-request.
+    raise KeyboardInterrupt
+
+
 def main() -> None:
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL_SEC, help="Seconds between polls")
     parser.add_argument("--once", action="store_true", help="Poll a single time and exit (for testing)")
