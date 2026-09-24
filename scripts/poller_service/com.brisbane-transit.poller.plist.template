@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{LABEL}}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PYTHON}}</string>
+        <string>-m</string>
+        <string>ingestion.gtfs_realtime_poller</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{REPO_ROOT}}</string>
+
+    <key>StandardOutPath</key>
+    <string>{{REPO_ROOT}}/logs/poller.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{REPO_ROOT}}/logs/poller.log</string>
+
+    <!-- Start on login/load, and restart automatically on any exit (crash,
+         SIGTERM from a launchctl stop, anything) — the poller is meant to
+         run forever, so any exit is effectively unexpected. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Minimum seconds between restarts, so a genuine crash loop (e.g. a
+         bad code change) doesn't spin CPU/hammer the DB reconnecting. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>
