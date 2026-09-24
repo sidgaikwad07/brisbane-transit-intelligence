@@ -87,7 +87,22 @@ docker compose up -d          # starts Postgres+PostGIS
 pip install -r requirements.txt
 python -m ingestion.gtfs_static           # loads the static schedule
 python -m ingestion.gtfs_realtime_poller  # polls live feeds (Ctrl+C to stop)
+python -m ingestion.od_trips              # loads the 3 most recent months of real ridership
 ```
+
+### Regenerating everything
+
+Once the poller's been running a while and `od_trips` is loaded, one command regenerates every
+finding/chart/export in this repo from current data:
+
+```bash
+make refresh          # dbt run once, then every notebooks/*.py script, then the CSV/XLSX exports
+make refresh-fast     # same, minus the slow exports
+```
+
+See [`scripts/refresh_all.py`](scripts/refresh_all.py) for what actually runs and in what order —
+it replaced what had become a manual, easy-to-get-wrong ritual of invoking six-plus scripts by
+hand. It only regenerates local files; nothing is committed or pushed automatically.
 
 ## Week 1 findings
 

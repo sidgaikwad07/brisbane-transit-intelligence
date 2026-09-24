@@ -59,6 +59,14 @@ def refresh_dbt_marts() -> None:
 
     from dotenv import dotenv_values
 
+    if os.environ.get("SKIP_DBT_REFRESH"):
+        # Set by scripts/refresh_all.py, which runs `dbt run` once up front —
+        # rebuilding mart_stop_delay (the slowest model, tens of seconds and
+        # growing with the poller's raw.trip_updates) once per pipeline run
+        # instead of once per script that happens to depend on it.
+        print("Skipping dbt refresh (SKIP_DBT_REFRESH set — already refreshed by the caller)")
+        return
+
     env = {**os.environ, **dotenv_values(REPO_ROOT / ".env"), "DBT_PROFILES_DIR": str(DBT_DIR)}
     result = subprocess.run(
         ["dbt", "run"], cwd=DBT_DIR, env=env, capture_output=True, text=True, check=False

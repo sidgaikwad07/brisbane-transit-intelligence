@@ -10,23 +10,23 @@ Every other finding in this repo looks at demand or reliability separately. This
 
 | Route | Mode | Avg weekday riders | Riders/trip (percentile) | On-time % (percentile) |
 |---|---|---|---|---|
-| SMBI (Southern Moreton Bay Island) | Ferry | 5,208 | 85 (100th) | 38% (2nd) |
-| 443 (Moggil - City Rocket) | Bus | 639 | 40 (96th) | 41% (3rd) |
+| SMBI (Southern Moreton Bay Island) | Ferry | 5,208 | 85 (100th) | 40% (3rd) |
+| 443 (Moggil - City Rocket) | Bus | 639 | 40 (96th) | 42% (3rd) |
 | 212 (Carindale - City/Valley via Seven Hills) | Bus | 1,121 | 34 (92nd) | 41% (3rd) |
-| 214 (Cannon Hill - City Express) | Bus | 534 | 36 (93rd) | 51% (9th) |
-| 141 (Browns Plains - City Rocket) | Bus | 548 | 32 (89th) | 48% (5th) |
+| 214 (Cannon Hill - City Express) | Bus | 534 | 36 (93rd) | 48% (6th) |
+| 332 (Zillmere - City Rocket via Spring Hill) | Bus | 553 | 35 (92nd) | 49% (7th) |
+| 581 (Brisbane City - Slacks Creek) | Bus | 642 | 34 (91st) | 49% (6th) |
+| 546 (Park Ridge - City via Greenbank & Griffith Uni) | Bus | 684 | 34 (92nd) | 50% (8th) |
+| 357 (Brendale - City Express) | Bus | 541 | 32 (88th) | 45% (5th) |
 | 220 (Wynnum - City Express) | Bus | 1,083 | 35 (93rd) | 53% (11th) |
-| 118 (Forest Lake - City) | Bus | 465 | 39 (95th) | 55% (13th) |
-| 357 (Brendale - City Express) | Bus | 541 | 32 (88th) | 49% (7th) |
-| 431 (Kenmore South - City Rocket) | Bus | 189 | 32 (87th) | 49% (6th) |
-| 426 (Kenmore - City Rocket via Chapel Hill) | Bus | 216 | 31 (86th) | 46% (5th) |
-| 192 (Yeronga - City via UQ Lakes and Highgate Hill) | Bus | 1,950 | 35 (93rd) | 56% (14th) |
-| 235 (Balmoral - City/Valley via Thynne Road) | Bus | 1,736 | 32 (89th) | 53% (11th) |
-| 227 (Wynnum - City) | Bus | 1,397 | 39 (95th) | 58% (18th) |
+| 141 (Browns Plains - City Rocket) | Bus | 548 | 32 (89th) | 49% (7th) |
+| 153 (Drewvale - City Rocket) | Bus | 331 | 33 (90th) | 53% (11th) |
+| 426 (Kenmore - City Rocket via Chapel Hill) | Bus | 216 | 31 (86th) | 49% (7th) |
+| 212 (Carindale - City/Valley via Seven Hills) | Bus | 1,121 | 34 (92nd) | 54% (13th) |
+| 186 (Wishart - City Rocket) | Bus | 567 | 30 (83rd) | 45% (5th) |
 | 175 (Garden City - City via Logan Rd) | Bus | 4,301 | 30 (85th) | 51% (8th) |
-| 210 (Cannon Hill - City/Valley) | Bus | 1,540 | 30 (84th) | 50% (7th) |
 
-**SMBI (Southern Moreton Bay Island)** tops the list: 5,208 riders/weekday — 100th percentile demand — running on-time only 38% of the time (2nd percentile reliability, near the bottom citywide). This is a heavily-used service that's unreliable most of the time it runs, which is a materially bigger problem than either a quiet-but-unreliable route or a busy-but-punctual one.
+**SMBI (Southern Moreton Bay Island)** tops the list: 5,208 riders/weekday — 100th percentile demand — running on-time only 40% of the time (3rd percentile reliability, near the bottom citywide). This is a heavily-used service that's unreliable most of the time it runs, which is a materially bigger problem than either a quiet-but-unreliable route or a busy-but-punctual one.
 
 Two routes from the Manly/Lota/Cleveland case study (`docs/manly_lota_service_gap.md`) — 220 and 227 — appear in this citywide top list too, independently confirming that case study's finding: they're not just locally notable, they're among the routes Brisbane's whole network most needs to fix.
 
