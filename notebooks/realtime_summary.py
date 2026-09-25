@@ -276,6 +276,15 @@ def write_report(
         "![On-time performance by mode, weekday vs weekend](images/week2_on_time_by_mode.png)",
         "",
         (
+            "These numbers are close (weekday and weekend within a few points of each other) — "
+            "that's real, not a bug, and it's worth understanding *why* before concluding weekend "
+            "service is nearly as good as weekday: on-time performance only measures the trips that "
+            "run, not how many exist. See `docs/weekend_frequency_gap.md` for the actual weekend "
+            "gap this number can't show — a real fraction of routes have zero weekend service at "
+            "all, affecting ~7-10% of weekday ridership."
+        ),
+        "",
+        (
             f"## Worst on-time performance (routes with ≥{MIN_SAMPLE_SIZE} stop visits "
             f"across ≥{MIN_TRIPS} distinct trips)"
         ),
