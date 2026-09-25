@@ -1,15 +1,15 @@
 # Week 2 findings — on-time performance & bunching
 
-Collection window: **2026-09-19 05:07 – 2026-09-24 08:24 UTC** (123h 16m, 2,029 polls) — our own measurement from polled GTFS-Realtime data, not Translink's official on-time stat.
+Collection window: **2026-09-19 05:07 – 2026-09-25 06:31 UTC** (145h 23m, 2,435 polls) — our own measurement from polled GTFS-Realtime data, not Translink's official on-time stat.
 
 "On time" here means arriving no more than 1 minute early and no more than 5 minutes late — a common industry convention. Early running counts against a route because it strands passengers who timed their arrival to the published schedule, not just late running.
 
 ## Citywide
 
-- **69.2%** of stop visits on time
-- **14.8%** more than 5 minutes late
-- **16.0%** more than 1 minute early
-- 626,012 stop visits measured
+- **68.8%** of stop visits on time
+- **14.3%** more than 5 minutes late
+- **16.9%** more than 1 minute early
+- 654,021 stop visits measured
 
 ### Weekday vs weekend
 
@@ -17,70 +17,72 @@ A blended figure across the whole collection window hides a real difference — 
 
 | | On time | Late | Early | Stop visits |
 |---|---|---|---|---|
-| Weekday | 67.8% | 13.1% | 19.2% | 298,267 |
+| Weekday | 67.0% | 12.3% | 20.6% | 326,276 |
 | Weekend | 70.5% | 16.3% | 13.2% | 327,745 |
 
 ![On-time performance by mode, weekday vs weekend](images/week2_on_time_by_mode.png)
+
+These numbers are close (weekday and weekend within a few points of each other) — that's real, not a bug, and it's worth understanding *why* before concluding weekend service is nearly as good as weekday: on-time performance only measures the trips that run, not how many exist. See `docs/weekend_frequency_gap.md` for the actual weekend gap this number can't show — a real fraction of routes have zero weekend service at all, affecting ~7-10% of weekday ridership.
 
 ## Worst on-time performance (routes with ≥30 stop visits across ≥5 distinct trips)
 
 | Route | Mode | On time | Late | Early | Stop visits | Trips |
 |---|---|---|---|---|---|---|
-| F50 | Ferry | 19.0% | 0.5% | 80.6% | 211 | 118 |
-| 529 | Bus | 20.3% | 61.0% | 18.6% | 59 | 6 |
-| 50 | Bus | 23.3% | 8.7% | 68.0% | 150 | 18 |
-| 263 | Bus | 24.8% | 74.4% | 0.9% | 117 | 5 |
+| 529 | Bus | 11.9% | 54.2% | 33.9% | 59 | 6 |
+| F50 | Ferry | 12.6% | 0.5% | 86.9% | 214 | 119 |
+| 50 | Bus | 22.2% | 10.5% | 67.3% | 162 | 19 |
+| 142 | Bus | 25.8% | 9.7% | 64.5% | 62 | 12 |
 | 116 | Bus | 29.2% | 68.1% | 2.7% | 408 | 7 |
-| 471 | Bus | 32.8% | 16.6% | 50.6% | 253 | 12 |
+| 263 | Bus | 30.8% | 68.4% | 0.9% | 117 | 5 |
+| 223 | Bus | 32.1% | 31.8% | 36.1% | 371 | 7 |
 | 182 | Bus | 33.1% | 34.3% | 32.6% | 1,390 | 33 |
-| 416 | Bus | 35.2% | 1.9% | 62.9% | 105 | 6 |
+| 471 | Bus | 33.2% | 13.7% | 53.1% | 271 | 12 |
 | N199 | Bus | 35.5% | 0.0% | 64.5% | 186 | 7 |
-| 40 | Bus | 36.5% | 6.6% | 56.9% | 181 | 19 |
+| 416 | Bus | 36.2% | 0.0% | 63.8% | 105 | 6 |
+| 275 | Bus | 37.3% | 15.5% | 47.2% | 303 | 8 |
 | N226 | Bus | 37.7% | 55.5% | 6.8% | 382 | 5 |
-| 142 | Bus | 37.9% | 12.1% | 50.0% | 58 | 12 |
-| 161 | Bus | 38.3% | 14.0% | 47.6% | 1,119 | 26 |
-| CLBR | Rail | 38.4% | 0.0% | 61.6% | 336 | 14 |
-| 202 | Bus | 39.4% | 8.8% | 51.9% | 457 | 14 |
+| 40 | Bus | 37.8% | 4.1% | 58.2% | 196 | 21 |
+| 202 | Bus | 37.9% | 12.5% | 49.6% | 522 | 15 |
 
 ## Best on-time performance (routes with ≥30 stop visits across ≥5 distinct trips)
 
 | Route | Mode | On time | Late | Early | Stop visits | Trips |
 |---|---|---|---|---|---|---|
+| DBBR | Rail | 100.0% | 0.0% | 0.0% | 79 | 8 |
 | BRSH | Rail | 100.0% | 0.0% | 0.0% | 98 | 12 |
 | SHBR | Rail | 100.0% | 0.0% | 0.0% | 105 | 13 |
-| SPRP | Rail | 99.5% | 0.0% | 0.5% | 208 | 9 |
-| L1 | Tram/Light Rail | 99.4% | 0.4% | 0.2% | 11,422 | 448 |
-| RPSP | Rail | 99.0% | 0.0% | 1.0% | 194 | 7 |
-| BRRP | Rail | 99.0% | 0.0% | 1.0% | 196 | 9 |
-| BRSH | Rail | 98.5% | 0.0% | 1.5% | 133 | 12 |
+| L1 | Tram/Light Rail | 99.4% | 0.4% | 0.2% | 13,010 | 527 |
+| BRSH | Rail | 99.4% | 0.0% | 0.6% | 159 | 15 |
+| BRRP | Rail | 99.3% | 0.7% | 0.0% | 278 | 14 |
+| BRRP | Rail | 98.5% | 0.0% | 1.5% | 200 | 9 |
+| SHBR | Rail | 98.4% | 0.0% | 1.6% | 243 | 19 |
 | SPRP | Rail | 98.3% | 0.0% | 1.7% | 175 | 5 |
 | RPBR | Rail | 98.0% | 0.0% | 2.0% | 299 | 13 |
 | SHBR | Rail | 97.5% | 1.9% | 0.5% | 364 | 35 |
-| IPRW | Rail | 97.1% | 0.0% | 2.9% | 34 | 6 |
+| BRIP | Rail | 97.3% | 0.0% | 2.7% | 185 | 10 |
 | SPCA | Rail | 97.0% | 0.0% | 3.0% | 169 | 8 |
 | BRIP | Rail | 96.6% | 0.0% | 3.4% | 326 | 12 |
-| DBBR | Rail | 96.3% | 0.0% | 3.7% | 163 | 14 |
-| CASP | Rail | 96.2% | 0.0% | 3.8% | 158 | 7 |
+| SPCA | Rail | 96.4% | 0.0% | 3.6% | 197 | 8 |
 
 ## Bunching (two vehicles on the same route within 400m, same poll)
 
 | Route | Bunching snapshots | Distinct polls bunched | First seen | Last seen |
 |---|---|---|---|---|
 | SHBR | 6,198 | 620 | 22:37 | 13:21 |
-| M1 | 3,905 | 1,419 | 05:07 | 08:22 |
+| 199 | 4,432 | 1,110 | 20:01 | 06:30 |
+| M1 | 4,388 | 1,651 | 05:07 | 06:30 |
 | BDBR | 3,819 | 428 | 02:29 | 13:21 |
-| 199 | 3,732 | 891 | 20:01 | 08:22 |
-| 60 | 3,263 | 802 | 20:01 | 08:22 |
-| 700 | 3,025 | 1,251 | 05:07 | 08:22 |
-| 705 | 2,832 | 1,252 | 05:09 | 08:22 |
-| M2 | 2,600 | 1,037 | 05:07 | 08:22 |
-| 61 | 1,725 | 862 | 20:01 | 08:20 |
-| 555 | 1,560 | 754 | 05:09 | 08:21 |
-| 701 | 1,522 | 872 | 05:07 | 08:22 |
-| 100 | 1,522 | 692 | 20:25 | 08:22 |
-| 196 | 1,492 | 801 | 20:18 | 08:22 |
-| 333 | 1,490 | 811 | 20:25 | 08:21 |
-| 340 | 1,423 | 762 | 20:27 | 08:22 |
+| 60 | 3,808 | 1,017 | 20:01 | 06:30 |
+| 700 | 3,268 | 1,428 | 05:07 | 06:30 |
+| 705 | 3,054 | 1,406 | 05:09 | 06:30 |
+| M2 | 2,854 | 1,185 | 05:07 | 06:30 |
+| 61 | 2,423 | 1,131 | 20:01 | 06:30 |
+| 100 | 1,875 | 877 | 20:25 | 06:30 |
+| 196 | 1,864 | 1,013 | 20:18 | 06:30 |
+| 340 | 1,816 | 976 | 20:27 | 06:30 |
+| 333 | 1,775 | 975 | 20:25 | 06:30 |
+| 555 | 1,712 | 836 | 05:09 | 06:30 |
+| 412 | 1,701 | 805 | 20:21 | 06:30 |
 
 ## Method & caveats
 
