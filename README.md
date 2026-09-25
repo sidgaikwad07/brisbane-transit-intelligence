@@ -78,6 +78,7 @@ build plan and current progress.
 | GTFS-RT Vehicle Positions | Protobuf | ~20-30s | `https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions` |
 | GTFS-RT Service Alerts | Protobuf | On change | `https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts` |
 | BCC Intersection traffic volume | JSON (Opendatasoft) | Near real-time | `https://data.brisbane.qld.gov.au/explore/dataset/traffic-data-at-intersection/` |
+| Brisbane daily weather | JSON | Daily (historical + forecast) | `https://archive-api.open-meteo.com/v1/archive` |
 
 ## Getting started
 
@@ -88,6 +89,8 @@ pip install -r requirements.txt
 python -m ingestion.gtfs_static           # loads the static schedule
 python -m ingestion.gtfs_realtime_poller  # polls live feeds (Ctrl+C to stop)
 python -m ingestion.od_trips              # loads the 3 most recent months of real ridership
+python -m ingestion.bcc_traffic           # polls BCC intersection traffic (Ctrl+C to stop)
+python -m ingestion.weather               # backfills daily Brisbane weather since 2026-01-01
 ```
 
 ### Running the poller as a background service (macOS)
@@ -109,6 +112,20 @@ sleep — no software fixes that), it just means nobody has to notice and manual
 process afterward. The plist is generated from
 [`scripts/poller_service/com.brisbane-transit.poller.plist.template`](scripts/poller_service/com.brisbane-transit.poller.plist.template),
 not committed with machine-specific paths baked in.
+
+The BCC traffic feed needs the same treatment — its API is a rolling ~5-minute window with no
+historical archive, so, like GTFS-RT, the only way to build a time series is to poll continuously
+starting now:
+
+```bash
+scripts/install_traffic_poller_service.sh     # install + start
+tail -f logs/traffic_poller.log                 # watch it poll
+scripts/uninstall_traffic_poller_service.sh   # stop + remove
+```
+
+Weather is the opposite case — Open-Meteo's archive endpoint has real history back to 1940, so
+`python -m ingestion.weather` just backfills the whole window in one run and is safe to re-run
+any time to catch up (it upserts by date, no duplication).
 
 ### Regenerating everything
 

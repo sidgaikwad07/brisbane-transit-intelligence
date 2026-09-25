@@ -31,4 +31,12 @@ OD_TRIPS_CKAN_PACKAGE_URL = (
     "?id=translink-origin-destination-trips-2022-onwards"
 )
 
+# Open-Meteo (free, no auth). Archive endpoint has daily history back to
+# 1940; forecast endpoint carries the last ~3 months + upcoming forecast —
+# used to catch today, which the archive endpoint lags a day or two behind.
+WEATHER_ARCHIVE_API_URL = "https://archive-api.open-meteo.com/v1/archive"
+WEATHER_FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
+BRISBANE_LAT = -27.4698
+BRISBANE_LON = 153.0251
+
 RAW_DATA_DIR = "data/raw"
