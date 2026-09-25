@@ -258,14 +258,27 @@ streamlit run dashboard/app.py
 
 [`dashboard/app.py`](dashboard/app.py) queries Postgres directly — the same dbt marts and raw
 tables every static report above is built from — so it's never more than a poller interval or two
-stale, not a recomputed-on-a-schedule export. Four tabs: **live delays** (current poll's arrival-delay
-distribution and which routes are late right now), **worst routes & bunching** (least reliable
-routes and most-bunched routes, from the marts behind [Week 2 findings](docs/week2_findings.md)),
-**demand vs reliability** (the [priority routes](docs/priority_routes_findings.md) scatter, live),
-and **traffic & weather** (BCC intersection congestion trend and recent Brisbane weather — the
-Week 3 inputs feeding the delay-prediction model once it's built). A manual refresh button clears
+stale, not a recomputed-on-a-schedule export. A hero banner computes and states the single most
+actionable live fact on every load (e.g. which hour of day is currently least reliable and by how
+much), and every chart carries a short auto-generated insight callout alongside it rather than
+leaving the reader to interpret it cold. Five tabs:
+
+- **🗺️ Live map** — every tracked vehicle's current position, colored by live delay status
+  (carto-darkmatter basemap, no API key needed); toggle to a citywide delay-hotspot view showing
+  every stop's average arrival delay
+- **🔴 Live delays** — rolling 15-minute arrival-delay distribution, which routes are late right
+  now, and an on-time-% by hour-of-day chart showing the diurnal reliability pattern
+- **📊 Worst routes & bunching** — least reliable routes (full early/on-time/late composition, not
+  just one number) and most-bunched routes, from the marts behind
+  [Week 2 findings](docs/week2_findings.md)
+- **🎯 Demand vs reliability** — the [priority routes](docs/priority_routes_findings.md) scatter
+  and a top-10 bar chart, live
+- **🚦 Traffic & weather** — BCC intersection congestion trend and current saturation distribution,
+  plus recent Brisbane weather — the Week 3 inputs feeding the delay-prediction model once it's built
+
+A sidebar mode filter (Bus/Rail/Ferry/Tram) applies across tabs, and a manual refresh button clears
 the cache; underlying queries also self-refresh every 60s (live tables) or 10 minutes (heavier
-joins) on their own.
+joins) on their own. Theme is set in [`.streamlit/config.toml`](.streamlit/config.toml).
 
 ## Shareable social image
 
