@@ -149,15 +149,30 @@ CREATE TABLE IF NOT EXISTS raw.service_alerts (
 
 -- ── External data (Week 3) ──────────────────────────────────────────────
 
+-- BCC/SCATS intersection traffic signal snapshots. The API is a rolling
+-- ~5-minute window (no historical backfill), so this table is only ever
+-- populated by continuous polling, same as raw.gtfs_rt_trip_updates.
+-- ds/mf/rf are repeated per approach lane (1-4): degree of saturation (%),
+-- measured vehicle flow, and SCATS-reconstituted (estimated) flow.
 CREATE TABLE IF NOT EXISTS raw.intersection_traffic (
-    id           BIGSERIAL PRIMARY KEY,
-    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    dbid         TEXT,
-    recorded_at  TIMESTAMPTZ,
-    site_id      TEXT,
-    lane         TEXT,
-    count        INTEGER
+    id             BIGSERIAL PRIMARY KEY,
+    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    dbid           TEXT,
+    recorded_at    TIMESTAMPTZ,
+    tsc            TEXT,       -- traffic signal controller site id (the intersection)
+    ss             TEXT,       -- subsystem/region grouping
+    lane           TEXT,       -- approach/link id, e.g. "SA-411"
+    cycle_time_sec INTEGER,
+    ds1 DOUBLE PRECISION, mf1 DOUBLE PRECISION, rf1 DOUBLE PRECISION,
+    ds2 DOUBLE PRECISION, mf2 DOUBLE PRECISION, rf2 DOUBLE PRECISION,
+    ds3 DOUBLE PRECISION, mf3 DOUBLE PRECISION, rf3 DOUBLE PRECISION,
+    ds4 DOUBLE PRECISION, mf4 DOUBLE PRECISION, rf4 DOUBLE PRECISION
 );
+
+CREATE INDEX IF NOT EXISTS idx_intersection_traffic_recorded_at
+    ON raw.intersection_traffic (recorded_at);
+CREATE INDEX IF NOT EXISTS idx_intersection_traffic_tsc
+    ON raw.intersection_traffic (tsc);
 
 CREATE TABLE IF NOT EXISTS raw.weather_daily (
     date         DATE PRIMARY KEY,

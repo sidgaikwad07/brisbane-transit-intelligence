@@ -34,9 +34,12 @@ not just code — the goal is a working artifact at every checkpoint.
   scoped as a separate, larger initiative once this foundation is proven; not committed to yet
 
 ## Week 3 — Explaining delay
-- [ ] BCC intersection traffic ingestion
+- [x] BCC intersection traffic ingestion (`ingestion/bcc_traffic.py`) — the API is a rolling
+  ~5-minute window with no historical backfill (verified), so it's a continuous poller like
+  GTFS-RT, not a one-time pull; installed as a LaunchAgent (`scripts/install_traffic_poller_service.sh`)
+- [x] Weather ingestion (`ingestion/weather.py`, Open-Meteo archive + forecast endpoints) — unlike
+  traffic, has real history, so this backfills the whole delay-collection window in one run
 - [ ] Join traffic volume to nearby delayed trips (spatial join via PostGIS)
-- [ ] Weather ingestion (BOM or Open-Meteo, simple daily pull)
 - [ ] Feature engineering: route, time-of-day, day-of-week, congestion, weather
 - [ ] Train XGBoost delay-prediction model, evaluate (MAE, and P(delay > 5 min))
 - **Demo artifact:** model card — features, performance, top delay drivers per route

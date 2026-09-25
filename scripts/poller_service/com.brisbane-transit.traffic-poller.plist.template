@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{LABEL}}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PYTHON}}</string>
+        <string>-m</string>
+        <string>ingestion.bcc_traffic</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{REPO_ROOT}}</string>
+
+    <key>StandardOutPath</key>
+    <string>{{REPO_ROOT}}/logs/traffic_poller.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{REPO_ROOT}}/logs/traffic_poller.log</string>
+
+    <!-- Same reasoning as the GTFS-RT poller's plist: the BCC traffic feed
+         is a rolling window with no historical backfill, so this process is
+         meant to run forever and any exit should restart it. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>
