@@ -45,7 +45,9 @@ not just code — the goal is a working artifact at every checkpoint.
 - **Demo artifact:** model card — features, performance, top delay drivers per route
 
 ## Week 4 — Dashboard + polish
-- [ ] Streamlit dashboard: network health, live-ish delay view, worst routes/stops, model predictions
+- [x] Streamlit dashboard (`dashboard/app.py`, pulled forward) — network health, live delay view,
+  worst routes/bunching, demand-vs-reliability, traffic & weather. Model predictions tab pending
+  the delay-prediction model (still not built — see Week 3 above)
 - [ ] README pass, architecture diagram finalized
 - [ ] Screen-recorded demo (GIF/video) for LinkedIn
 - [ ] Write-up: what the data showed, one or two concrete, specific findings about Brisbane's network

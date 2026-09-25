@@ -11,3 +11,4 @@ line-length = 110
 # the local `ingestion` package — that necessarily puts a statement before
 # some imports. Deliberate, not an import-ordering mistake.
 "notebooks/*.py" = ["E402"]
+"dashboard/*.py" = ["E402"]
