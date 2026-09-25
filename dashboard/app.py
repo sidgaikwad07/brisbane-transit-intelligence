@@ -30,6 +30,7 @@ from priority_routes import build_priority_table
 st.set_page_config(page_title="Brisbane Transit Intelligence", page_icon="🚌", layout="wide")
 
 MODE_COLORS = {"Bus": "#2a78d6", "Rail": "#eb6834", "Ferry": "#1baf7a", "Tram/Light Rail": "#eda100"}
+STATUS_COLORS = {"Early": "#2a78d6", "On-time": "#1baf7a", "Late": "#eb6834"}
 CACHE_TTL_FAST = 60  # live-ish tables (delays, traffic, vehicle positions)
 CACHE_TTL_SLOW = 600  # heavier joins (priority routes, demand)
 
@@ -76,12 +77,78 @@ def load_bunching_summary() -> dict:
 def load_worst_routes(min_trips: int = 5) -> pd.DataFrame:
     return pd.read_sql(
         f"""
-        SELECT route_short_name AS route, route_long_name, mode, on_time_pct, late_pct,
+        SELECT route_short_name AS route, route_long_name, mode, on_time_pct, late_pct, early_pct,
                avg_arrival_delay_sec, n_trips, n_stop_visits
         FROM marts.mart_on_time_performance
         WHERE n_trips >= {min_trips}
         ORDER BY on_time_pct ASC
         LIMIT 15
+        """,
+        engine,
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL_FAST)
+def load_delay_status_breakdown() -> pd.DataFrame:
+    """Citywide split of every tracked stop visit into early / on-time / late."""
+    df = pd.read_sql(
+        """
+        SELECT
+            SUM(CASE WHEN arrival_delay_sec < -60 THEN 1 ELSE 0 END) AS "Early",
+            SUM(CASE WHEN arrival_delay_sec BETWEEN -60 AND 300 THEN 1 ELSE 0 END) AS "On-time",
+            SUM(CASE WHEN arrival_delay_sec > 300 THEN 1 ELSE 0 END) AS "Late"
+        FROM marts.mart_stop_delay
+        """,
+        engine,
+    )
+    return df.iloc[0].rename_axis("status").reset_index(name="n_stop_visits")
+
+
+@st.cache_data(ttl=CACHE_TTL_FAST)
+def load_mode_share() -> pd.DataFrame:
+    return pd.read_sql(
+        """
+        SELECT mode, SUM(n_trips) AS n_trips, SUM(n_stop_visits) AS n_stop_visits, COUNT(*) AS n_routes
+        FROM marts.mart_on_time_performance
+        GROUP BY mode
+        ORDER BY n_trips DESC
+        """,
+        engine,
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL_FAST)
+def load_otp_by_hour() -> pd.DataFrame:
+    """On-time % binned by hour of day (Brisbane local time) — the diurnal
+    reliability pattern, aggregated over the whole collection window.
+    """
+    return pd.read_sql(
+        """
+        SELECT
+            EXTRACT(HOUR FROM last_polled_at AT TIME ZONE 'Australia/Brisbane')::int AS hour,
+            ROUND(100.0 * SUM(CASE WHEN arrival_delay_sec BETWEEN -60 AND 300 THEN 1 ELSE 0 END) / COUNT(*), 1)
+                AS on_time_pct,
+            COUNT(*) AS n_stop_visits
+        FROM marts.mart_stop_delay
+        GROUP BY 1
+        ORDER BY 1
+        """,
+        engine,
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL_FAST)
+def load_traffic_saturation_distribution() -> pd.DataFrame:
+    """Every lane's degree-of-saturation reading from the most recent traffic
+    poll — the underlying distribution behind the single "peak saturation"
+    KPI tile.
+    """
+    return pd.read_sql(
+        """
+        WITH latest AS (SELECT MAX(recorded_at) AS t FROM raw.intersection_traffic)
+        SELECT GREATEST(ds1, ds2, ds3, ds4) AS peak_saturation
+        FROM raw.intersection_traffic, latest
+        WHERE recorded_at = latest.t AND GREATEST(ds1, ds2, ds3, ds4) IS NOT NULL
         """,
         engine,
     )
@@ -97,19 +164,20 @@ def load_bunching_by_route() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=CACHE_TTL_FAST)
-def load_live_delays() -> pd.DataFrame:
-    """Most recent poll's arrival delays by route — as live as the poller."""
+def load_live_delays(minutes: int = 15) -> pd.DataFrame:
+    """Arrival delays from the last N minutes of polls — a rolling window
+    rather than a single poll, so the histogram has enough points to show a
+    real shape (one poll alone is a thin, spiky sample).
+    """
     return pd.read_sql(
-        """
-        WITH latest_poll AS (SELECT MAX(polled_at) AS t FROM raw.trip_updates)
+        f"""
         SELECT tu.route_id, r.route_short_name AS route, r.mode,
                tu.arrival_delay_sec, tu.trip_id, tu.stop_id, tu.polled_at
         FROM raw.trip_updates tu
         JOIN staging.stg_routes r ON r.route_id = tu.route_id
-        CROSS JOIN latest_poll
-        WHERE tu.polled_at = latest_poll.t AND tu.arrival_delay_sec IS NOT NULL
+        WHERE tu.polled_at > NOW() - INTERVAL '{minutes} minutes' AND tu.arrival_delay_sec IS NOT NULL
         ORDER BY tu.arrival_delay_sec DESC
-        LIMIT 500
+        LIMIT 5000
         """,
         engine,
     )
@@ -204,6 +272,47 @@ k4.metric(
 )
 k5.metric("Intersections tracked", f"{int(traffic.get('n_intersections', 0)):,}" if traffic else "—")
 
+c1, c2 = st.columns([1, 2])
+with c1:
+    st.subheader("Delay status, citywide")
+    status = load_delay_status_breakdown()
+    fig = px.pie(
+        status,
+        names="status",
+        values="n_stop_visits",
+        hole=0.55,
+        color="status",
+        color_discrete_map=STATUS_COLORS,
+        category_orders={"status": ["Early", "On-time", "Late"]},
+    )
+    fig.update_traces(textinfo="percent+label", sort=False)
+    total_visits = int(status["n_stop_visits"].sum())
+    fig.update_layout(
+        height=320,
+        margin=dict(t=10, b=10),
+        showlegend=False,
+        annotations=[dict(text=f"{total_visits:,}<br>stop visits", x=0.5, y=0.5, font_size=14, showarrow=False)],
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption('"On-time" = 1 min early to 5 min late, the common industry convention.')
+
+with c2:
+    st.subheader("Trips tracked by mode")
+    mode_share = load_mode_share()
+    fig = px.bar(
+        mode_share,
+        x="mode",
+        y="n_trips",
+        color="mode",
+        color_discrete_map=MODE_COLORS,
+        text="n_trips",
+        labels={"mode": "", "n_trips": "Trips tracked"},
+    )
+    fig.update_traces(texttemplate="%{text:,}", textposition="outside")
+    fig.update_layout(height=320, margin=dict(t=10, b=10), showlegend=False)
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("Distinct trips with at least one polled arrival prediction, this collection window.")
+
 st.divider()
 
 tab_live, tab_reliability, tab_priority, tab_traffic = st.tabs(
@@ -215,10 +324,13 @@ tab_live, tab_reliability, tab_priority, tab_traffic = st.tabs(
 with tab_live:
     live = load_live_delays()
     if live.empty:
-        st.info("No delay data in the most recent poll yet.")
+        st.info("No delay data in the last 15 minutes yet.")
     else:
         as_of = live["polled_at"].max()
-        st.caption(f"Most recent poll: {as_of:%Y-%m-%d %H:%M:%S} UTC — {len(live)} stop predictions")
+        st.caption(
+            f"Rolling 15-minute window, most recent poll {as_of:%Y-%m-%d %H:%M:%S} UTC "
+            f"— {len(live):,} arrival predictions"
+        )
 
         c1, c2 = st.columns([2, 1])
         with c1:
@@ -229,24 +341,56 @@ with tab_live:
                 color="mode",
                 color_discrete_map=MODE_COLORS,
                 labels={"arrival_delay_sec": "Arrival delay (seconds)"},
-                title="Current arrival delay distribution, all tracked stops",
+                title="Arrival delay distribution, last 15 minutes",
             )
             fig.add_vline(x=-60, line_dash="dot", line_color="gray")
             fig.add_vline(x=300, line_dash="dot", line_color="gray")
             fig.update_layout(height=400, margin=dict(t=50, b=10))
             st.plotly_chart(fig, use_container_width=True)
         with c2:
+            # One row per trip: its most recently polled delay, not every
+            # poll it appeared in over the window (a trip can be seen 10+
+            # times in 15 minutes and shouldn't be counted 10 times).
+            latest_per_trip = live.sort_values("polled_at").groupby("trip_id", as_index=False).last()
             worst_now = (
-                live[live["arrival_delay_sec"] > 300]
+                latest_per_trip[latest_per_trip["arrival_delay_sec"] > 300]
                 .groupby("route", as_index=False)["arrival_delay_sec"]
-                .agg(["count", "mean"])
-                .reset_index()
-                .rename(columns={"count": "n_late_now", "mean": "avg_delay_sec"})
+                .agg(n_late_now="count", avg_delay_sec="mean")
                 .sort_values("n_late_now", ascending=False)
                 .head(10)
             )
             st.markdown("**Routes running late right now** (>5 min)")
-            st.dataframe(worst_now, hide_index=True, use_container_width=True)
+            if worst_now.empty:
+                st.success("No route currently running more than 5 minutes late.")
+            else:
+                st.dataframe(worst_now.round(0), hide_index=True, use_container_width=True)
+
+        st.subheader("Reliability by time of day")
+        otp_hour = load_otp_by_hour()
+        if not otp_hour.empty:
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=otp_hour["hour"],
+                    y=otp_hour["on_time_pct"],
+                    mode="lines+markers",
+                    line=dict(color="#2a78d6", width=2.5),
+                    marker=dict(size=6),
+                    fill="tozeroy",
+                    fillcolor="rgba(42,120,214,0.08)",
+                )
+            )
+            fig.update_layout(
+                height=320,
+                margin=dict(t=10),
+                xaxis=dict(title="Hour of day (Brisbane time)", dtick=2, range=[-0.5, 23.5]),
+                yaxis=dict(title="On-time %", range=[0, 100]),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption(
+                "On-time % of all tracked stop visits, binned by hour of day and aggregated across the "
+                "whole collection window — shows the diurnal pattern rather than a single day's noise."
+            )
 
 # ── Worst routes & bunching ─────────────────────────────────────────────
 
@@ -254,18 +398,30 @@ with tab_reliability:
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Least reliable routes")
-        worst = load_worst_routes()
-        fig = px.bar(
-            worst.sort_values("on_time_pct"),
-            x="on_time_pct",
-            y="route",
-            orientation="h",
-            color="mode",
-            color_discrete_map=MODE_COLORS,
-            labels={"on_time_pct": "On-time %", "route": "Route"},
-            hover_data=["route_long_name", "n_trips"],
+        worst = load_worst_routes().sort_values("on_time_pct", ascending=False)
+        long_names = dict(zip(worst["route"], worst["route_long_name"]))
+        melted = worst.melt(
+            id_vars=["route"],
+            value_vars=["early_pct", "on_time_pct", "late_pct"],
+            var_name="status",
+            value_name="pct",
         )
-        fig.update_layout(height=500, margin=dict(t=10))
+        melted["status"] = melted["status"].map(
+            {"early_pct": "Early", "on_time_pct": "On-time", "late_pct": "Late"}
+        )
+        melted["route_long_name"] = melted["route"].map(long_names)
+        fig = px.bar(
+            melted,
+            x="pct",
+            y="route",
+            color="status",
+            orientation="h",
+            color_discrete_map=STATUS_COLORS,
+            category_orders={"status": ["Early", "On-time", "Late"], "route": worst["route"].tolist()},
+            labels={"pct": "Share of stop visits (%)", "route": "Route"},
+            hover_data=["route_long_name"],
+        )
+        fig.update_layout(height=500, margin=dict(t=10), barmode="stack", legend_title=None)
         st.plotly_chart(fig, use_container_width=True)
         st.caption("Filtered to routes with ≥5 tracked trips, to avoid one bad run skewing a thin sample.")
 
@@ -297,19 +453,38 @@ with tab_priority:
         "performance — the routes here affect the most riders per late arrival, citywide."
     )
     priority = load_priority_routes()
-    fig = px.scatter(
-        priority,
-        x="demand_pctile",
-        y="otp_pctile",
-        size="avg_weekday_riders",
-        color="mode",
-        color_discrete_map=MODE_COLORS,
-        hover_name="route",
-        hover_data={"route_long_name": True, "avg_weekday_riders": ":.0f", "on_time_pct": ":.1f"},
-        labels={"demand_pctile": "Demand percentile", "otp_pctile": "On-time percentile"},
-    )
-    fig.update_layout(height=500, margin=dict(t=10))
-    st.plotly_chart(fig, use_container_width=True)
+
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        fig = px.scatter(
+            priority,
+            x="demand_pctile",
+            y="otp_pctile",
+            size="avg_weekday_riders",
+            color="mode",
+            color_discrete_map=MODE_COLORS,
+            hover_name="route",
+            hover_data={"route_long_name": True, "avg_weekday_riders": ":.0f", "on_time_pct": ":.1f"},
+            labels={"demand_pctile": "Demand percentile", "otp_pctile": "On-time percentile"},
+        )
+        fig.update_layout(height=450, margin=dict(t=10))
+        st.plotly_chart(fig, use_container_width=True)
+    with c2:
+        top10 = priority.sort_values("priority_score", ascending=False).head(10).iloc[::-1]
+        fig = px.bar(
+            top10,
+            x="priority_score",
+            y="route",
+            orientation="h",
+            color="mode",
+            color_discrete_map=MODE_COLORS,
+            labels={"priority_score": "Priority score", "route": "Route"},
+            hover_data=["route_long_name"],
+        )
+        fig.update_layout(height=450, margin=dict(t=10), showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("demand_pctile × (100 − otp_pctile) — highest first.")
+
     st.dataframe(
         priority[["route", "route_long_name", "mode", "avg_weekday_riders", "on_time_pct", "priority_score"]].round(1),
         hide_index=True,
@@ -331,7 +506,7 @@ with tab_traffic:
                 go.Scatter(x=trend["recorded_at"], y=trend["avg_peak_saturation"], mode="lines", line_color="#2a78d6")
             )
             fig.update_layout(
-                height=350,
+                height=320,
                 margin=dict(t=10),
                 yaxis_title="Avg peak-lane saturation (%)",
                 xaxis_title=None,
@@ -342,6 +517,17 @@ with tab_traffic:
             "The BCC feed is a rolling ~5-minute window with no history, so this trend only covers "
             "time since the poller started."
         )
+
+        st.subheader("Congestion right now, all intersections")
+        sat_dist = load_traffic_saturation_distribution()
+        if sat_dist.empty:
+            st.info("No traffic readings yet.")
+        else:
+            fig = px.histogram(sat_dist, x="peak_saturation", nbins=40, labels={"peak_saturation": "Peak-lane saturation (%)"})
+            fig.update_traces(marker_color="#2a78d6")
+            fig.update_layout(height=300, margin=dict(t=10), yaxis_title="Lanes")
+            st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"{len(sat_dist):,} lane readings from the most recent traffic poll.")
 
     with c2:
         st.subheader("Recent weather")
