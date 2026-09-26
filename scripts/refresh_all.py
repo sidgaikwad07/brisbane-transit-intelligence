@@ -41,6 +41,7 @@ PIPELINE = [
     "notebooks/manly_lota_service_gap.py",
     "notebooks/density_heatmaps.py",
     "notebooks/hero_dashboard.py",
+    "notebooks/transit_infographic.py",
 ]
 EXPORT_SCRIPTS = [
     "notebooks/export_week2_data.py",
