@@ -33,6 +33,14 @@ st.set_page_config(page_title="Brisbane Transit Intelligence", page_icon="🚌",
 
 MODE_COLORS = {"Bus": "#3ea6ff", "Rail": "#ff8a3d", "Ferry": "#2ee6a6", "Tram/Light Rail": "#f5c84c"}
 STATUS_COLORS = {"Early": "#3ea6ff", "On-time": "#2ee6a6", "Late": "#ff5c5c", "Unknown": "#5b6472"}
+CAUSE_COLORS = {
+    "STRIKE": "#ff5c5c",
+    "MAINTENANCE": "#f5c84c",
+    "CONSTRUCTION": "#f5c84c",
+    "HOLIDAY": "#3ea6ff",
+    "DEMONSTRATION": "#ff8a3d",
+    "OTHER_CAUSE": "#5b6472",
+}
 BRISBANE_CENTER = {"lat": -27.4698, "lon": 153.0251}
 CACHE_TTL_FAST = 60  # live-ish tables (delays, traffic, vehicle positions)
 CACHE_TTL_SLOW = 600  # heavier joins (priority routes, demand)
@@ -76,6 +84,22 @@ st.markdown(
     }
     .insight-box.warn { border-left-color: #ff5c5c; background: rgba(255,92,92,0.08); }
     .insight-box.good { border-left-color: #2ee6a6; background: rgba(46,230,166,0.08); }
+
+    .alert-row {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.55rem 0.8rem;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.03);
+        margin-bottom: 0.35rem;
+        font-size: 0.88rem;
+    }
+    .alert-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .alert-cause {
+        font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
+        opacity: 0.65; margin-left: auto; padding-left: 1rem; white-space: nowrap;
+    }
 
     .stTabs [data-baseweb="tab-list"] { gap: 4px; }
     .stTabs [data-baseweb="tab"] {
@@ -165,6 +189,26 @@ def load_bunching_summary() -> dict:
         "SELECT COUNT(*) AS n_events, COUNT(DISTINCT route_id) AS n_routes FROM marts.mart_bunching_events", engine
     )
     return df.iloc[0].to_dict()
+
+
+@st.cache_data(ttl=CACHE_TTL_FAST)
+def load_active_alerts() -> pd.DataFrame:
+    """Every distinct alert live in the most recent Service Alerts poll —
+    this table has been silently accumulating since Week 2 (GTFS-RT alerts
+    poll) but nothing in the analysis has read it until now.
+    """
+    return pd.read_sql(
+        """
+        WITH latest_poll AS (SELECT MAX(polled_at) AS t FROM raw.service_alerts)
+        SELECT sa.header_text, sa.cause, sa.effect, COUNT(DISTINCT sa.route_id) AS n_routes
+        FROM raw.service_alerts sa
+        CROSS JOIN latest_poll
+        WHERE sa.polled_at = latest_poll.t AND sa.header_text IS NOT NULL
+        GROUP BY sa.header_text, sa.cause, sa.effect
+        ORDER BY n_routes DESC
+        """,
+        engine,
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_FAST)
@@ -442,6 +486,31 @@ k4.metric(
     help="Avg of each intersection's busiest lane, most recent poll",
 )
 k5.metric("Intersections tracked", f"{int(traffic.get('n_intersections', 0)):,}" if traffic else "—")
+
+alerts = load_active_alerts()
+with st.expander(f"🚨 {len(alerts)} active service alerts right now", expanded=len(alerts) > 0):
+    if alerts.empty:
+        st.success("No active service alerts.")
+    else:
+        top_alerts = alerts.head(20)
+        rows_html = ""
+        for _, row in top_alerts.iterrows():
+            dot_color = CAUSE_COLORS.get(row["cause"], "#5b6472")
+            routes_note = f"{int(row['n_routes'])} routes" if row["n_routes"] > 0 else "stop-level"
+            rows_html += (
+                '<div class="alert-row">'
+                f'<span class="alert-dot" style="background:{dot_color}"></span>'
+                f"<span>{row['header_text']}</span>"
+                f'<span class="alert-cause">{row["cause"].replace("_", " ").title()} · {routes_note}</span>'
+                "</div>"
+            )
+        st.markdown(rows_html, unsafe_allow_html=True)
+        if len(alerts) > 20:
+            st.caption(f"+{len(alerts) - 20} more, filtered to the 20 affecting the most routes.")
+        st.caption(
+            "From raw.service_alerts (GTFS-RT), most recent poll — the same feed that shows on "
+            "Translink's own journey planner, polled continuously rather than read one page at a time."
+        )
 
 c1, c2 = st.columns([1, 2])
 with c1:
