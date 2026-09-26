@@ -276,6 +276,12 @@ leaving the reader to interpret it cold. Five tabs:
 - **🚦 Traffic & weather** — BCC intersection congestion trend and current saturation distribution,
   plus recent Brisbane weather — the Week 3 inputs feeding the delay-prediction model once it's built
 
+Right under the KPI row, an expandable **🚨 active service alerts** panel lists every disruption
+live in the most recent GTFS-RT Service Alerts poll — the same feed behind the alert banners on
+Translink's own journey planner (e.g. "Reduced train timetables", "Weekend track closure"), except
+polled continuously into `raw.service_alerts` since Week 2 rather than read one page at a time.
+That table had been silently accumulating for over a week before anything in this repo read it.
+
 A sidebar mode filter (Bus/Rail/Ferry/Tram) applies across tabs, and a manual refresh button clears
 the cache; underlying queries also self-refresh every 60s (live tables) or 10 minutes (heavier
 joins) on their own. Theme is set in [`.streamlit/config.toml`](.streamlit/config.toml).
