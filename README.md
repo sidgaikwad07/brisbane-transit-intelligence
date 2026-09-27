@@ -261,7 +261,7 @@ tables every static report above is built from — so it's never more than a pol
 stale, not a recomputed-on-a-schedule export. A hero banner computes and states the single most
 actionable live fact on every load (e.g. which hour of day is currently least reliable and by how
 much), and every chart carries a short auto-generated insight callout alongside it rather than
-leaving the reader to interpret it cold. Five tabs:
+leaving the reader to interpret it cold. Six tabs:
 
 - **🗺️ Live map** — every tracked vehicle's current position, colored by live delay status
   (carto-darkmatter basemap, no API key needed); toggle to a citywide delay-hotspot view showing
@@ -271,6 +271,14 @@ leaving the reader to interpret it cold. Five tabs:
 - **📊 Worst routes & bunching** — least reliable routes (full early/on-time/late composition, not
   just one number) and most-bunched routes, from the marts behind
   [Week 2 findings](docs/week2_findings.md)
+- **📈 Ridership trends** — real monthly ridership by mode, ridership by time-of-day block (a fair
+  avg-trips-per-day comparison, not a raw sum, since weekday blocks cover 5 days and weekend covers
+  2), the busiest stations network-wide by actual trip volume, and a day-of-week × hour heatmap of
+  scheduled stop-visit density. Building the mode breakdown surfaced a real gap in the existing
+  demand marts: the OD dataset identifies heavy rail and the Gold Coast light rail by their own
+  literal codes ("Rail", "GCLR") rather than a GTFS route number, so the existing route-name join
+  silently dropped ~36% of all real ridership — reclassified explicitly for this chart, noted as a
+  fix-upstream candidate for the other demand marts
 - **🎯 Demand vs reliability** — the [priority routes](docs/priority_routes_findings.md) scatter
   and a top-10 bar chart, live
 - **🚦 Traffic & weather** — BCC intersection congestion trend and current saturation distribution,

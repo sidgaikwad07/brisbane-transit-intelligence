@@ -32,6 +32,15 @@ not just code — the goal is a working artifact at every checkpoint.
   case study's routes 220/227 in the citywide top 15
 - [ ] Longer-term: route planning via RAPTOR (+ live-delay layering), scenario comparison —
   scoped as a separate, larger initiative once this foundation is proven; not committed to yet
+- [ ] **Known gap, found 2026-09-27:** the OD dataset identifies heavy rail and the Gold Coast light
+  rail by literal route codes ("Rail", "GCLR"), not a GTFS route_short_name. Every existing
+  route-level join (`scheduled_weekday_trips_by_route` in `demand_intelligence.py`, used by
+  `priority_routes.py` and downstream by `hero_dashboard.py`/`transit_infographic.py`) silently
+  drops both — meaning "top priority route" rankings and "busiest routes" charts have a blind spot
+  for two entire modes (~36% of all real ridership). Worked around locally in the dashboard's
+  Ridership trends tab (explicit reclassification); not yet fixed at the source
+  (`stg_od_trips`/`mart_od_demand_by_route`), which would require re-deriving those marts and
+  re-checking every finding that depends on them.
 
 ## Week 3 — Explaining delay
 - [x] BCC intersection traffic ingestion (`ingestion/bcc_traffic.py`) — the API is a rolling

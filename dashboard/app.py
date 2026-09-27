@@ -26,6 +26,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy import create_engine
 
+from demand_intelligence import count_weekdays, od_months_covered
 from ingestion.config import DATABASE_URL
 from priority_routes import build_priority_table
 
@@ -42,6 +43,21 @@ CAUSE_COLORS = {
     "OTHER_CAUSE": "#5b6472",
 }
 BRISBANE_CENTER = {"lat": -27.4698, "lon": 153.0251}
+TIME_BLOCK_ORDER = [
+    "Weekday (12:00am-8:29:59am)",
+    "Weekday (8:30am-2:59:59pm)",
+    "Weekday (3:00pm-6:59:59pm)",
+    "Weekday (7:00pm-11:59:59pm)",
+    "Weekend",
+]
+TIME_BLOCK_LABELS = {
+    "Weekday (12:00am-8:29:59am)": "Weekday early<br>(12–8:30am)",
+    "Weekday (8:30am-2:59:59pm)": "Weekday interpeak<br>(8:30am–3pm)",
+    "Weekday (3:00pm-6:59:59pm)": "Weekday PM peak<br>(3–7pm)",
+    "Weekday (7:00pm-11:59:59pm)": "Weekday evening<br>(7pm–12am)",
+    "Weekend": "Weekend<br>(all day)",
+}
+DOW_NAMES = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun"}
 CACHE_TTL_FAST = 60  # live-ish tables (delays, traffic, vehicle positions)
 CACHE_TTL_SLOW = 600  # heavier joins (priority routes, demand)
 
@@ -342,6 +358,112 @@ def load_priority_routes() -> pd.DataFrame:
     return df.head(15)
 
 
+def _count_weekend_days(months: list) -> int:
+    n = 0
+    for m in months:
+        span = pd.date_range(m, m + pd.offsets.MonthEnd(0), freq="D")
+        n += int((span.weekday >= 5).sum())
+    return n
+
+
+@st.cache_data(ttl=CACHE_TTL_SLOW)
+def load_ridership_by_month() -> pd.DataFrame:
+    """Real monthly ridership by mode. The OD dataset identifies heavy rail
+    and the Gold Coast light rail by their own literal route codes ("Rail",
+    "GCLR") rather than a GTFS route_short_name, so a plain join to the
+    static feed silently drops them — discovered while building this chart.
+    Reclassified explicitly here rather than upstream, since fixing it in
+    the dbt marts would ripple into every already-published finding that
+    depends on them.
+    """
+    return pd.read_sql(
+        """
+        WITH classified AS (
+            SELECT
+                od.month,
+                od.quantity,
+                CASE
+                    WHEN od.route = 'Rail' THEN 'Rail'
+                    WHEN od.route = 'GCLR' THEN 'Tram/Light Rail'
+                    WHEN r.mode IS NOT NULL THEN r.mode
+                    ELSE 'Other/unmapped'
+                END AS mode
+            FROM raw.od_trips od
+            LEFT JOIN staging.stg_routes_by_short_name r ON r.route_short_name = od.route
+        )
+        SELECT month, mode, SUM(quantity) AS total_trips
+        FROM classified
+        GROUP BY month, mode
+        ORDER BY month
+        """,
+        engine,
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL_SLOW)
+def load_ridership_by_time_block() -> pd.DataFrame:
+    df = pd.read_sql(
+        "SELECT time_grouping, SUM(quantity) AS total_trips FROM raw.od_trips "
+        "WHERE time_grouping != 'Unknown' GROUP BY time_grouping",
+        engine,
+    )
+    months = od_months_covered(engine)
+    n_weekdays = count_weekdays(months)
+    n_weekend_days = _count_weekend_days(months)
+    df["n_days"] = df["time_grouping"].apply(lambda t: n_weekend_days if t == "Weekend" else n_weekdays)
+    df["avg_trips_per_day"] = df["total_trips"] / df["n_days"]
+    df["label"] = df["time_grouping"].map(TIME_BLOCK_LABELS)
+    df["order"] = df["time_grouping"].map({t: i for i, t in enumerate(TIME_BLOCK_ORDER)})
+    return df.sort_values("order")
+
+
+@st.cache_data(ttl=CACHE_TTL_SLOW)
+def load_busiest_stations(top_n: int = 15) -> pd.DataFrame:
+    """Real ridership per station (origin + destination combined), not
+    schedule frequency. Platform suffixes are stripped and re-aggregated so
+    "Central station, platform 1/2/3..." isn't split into separate rows.
+    """
+    return pd.read_sql(
+        f"""
+        SELECT regexp_replace(s.stop_name, ', platform.*$', '') AS station, SUM(x.volume) AS total_volume
+        FROM (
+            SELECT origin_stop AS stop_id, SUM(quantity) AS volume FROM raw.od_trips
+                WHERE origin_stop IS NOT NULL GROUP BY origin_stop
+            UNION ALL
+            SELECT destination_stop AS stop_id, SUM(quantity) AS volume FROM raw.od_trips
+                WHERE destination_stop IS NOT NULL GROUP BY destination_stop
+        ) x
+        JOIN raw.stops s ON s.stop_id = x.stop_id
+        GROUP BY station
+        ORDER BY total_volume DESC
+        LIMIT {top_n}
+        """,
+        engine,
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL_SLOW)
+def load_schedule_heatmap() -> pd.DataFrame:
+    """Scheduled stop-visit density by day-of-week x hour — a real pattern
+    from actually-polled GTFS-RT data, not ridership (the OD dataset has no
+    hour-level granularity). Each weekday is backed by exactly one calendar
+    day in the current ~8-day collection window, so read this as "what this
+    specific week looked like," not a many-week average.
+    """
+    return pd.read_sql(
+        """
+        SELECT
+            EXTRACT(ISODOW FROM scheduled_arrival AT TIME ZONE 'Australia/Brisbane')::int AS dow,
+            EXTRACT(HOUR FROM scheduled_arrival AT TIME ZONE 'Australia/Brisbane')::int AS hour,
+            COUNT(*) AS n_stop_visits
+        FROM marts.mart_stop_delay
+        WHERE scheduled_arrival IS NOT NULL
+        GROUP BY 1, 2
+        """,
+        engine,
+    )
+
+
 @st.cache_data(ttl=CACHE_TTL_FAST)
 def load_live_delays(minutes: int = 15) -> pd.DataFrame:
     return pd.read_sql(
@@ -558,8 +680,15 @@ with c2:
 
 st.divider()
 
-tab_map, tab_live, tab_reliability, tab_priority, tab_traffic = st.tabs(
-    ["🗺️ Live map", "🔴 Live delays", "📊 Worst routes & bunching", "🎯 Demand vs reliability", "🚦 Traffic & weather"]
+tab_map, tab_live, tab_reliability, tab_ridership, tab_priority, tab_traffic = st.tabs(
+    [
+        "🗺️ Live map",
+        "🔴 Live delays",
+        "📊 Worst routes & bunching",
+        "📈 Ridership trends",
+        "🎯 Demand vs reliability",
+        "🚦 Traffic & weather",
+    ]
 )
 
 # ── Live map ────────────────────────────────────────────────────────────
@@ -783,6 +912,105 @@ with tab_reliability:
                 "effectively one service, doubling the wait for whoever's behind them."
             )
         st.caption("Two vehicles on the same route within 400m in the same poll.")
+
+# ── Ridership trends ────────────────────────────────────────────────────
+
+with tab_ridership:
+    st.caption(
+        "Real Queensland Government origin-destination ridership (go card/EMV/paper ticket taps), "
+        "not a schedule proxy — the same source behind "
+        "[Demand intelligence](https://github.com/sidgaikwad07/brisbane-transit-intelligence/blob/main/docs/demand_intelligence_findings.md)."
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("Ridership trend by mode")
+        monthly = load_ridership_by_month()
+        fig = px.line(
+            monthly,
+            x="month",
+            y="total_trips",
+            color="mode",
+            markers=True,
+            color_discrete_map={**MODE_COLORS, "Other/unmapped": "#5b6472"},
+            labels={"total_trips": "Trips", "month": ""},
+        )
+        style_fig(fig, height=360)
+        st.plotly_chart(fig, use_container_width=True)
+        n_months = monthly["month"].nunique()
+        rail_total = monthly.loc[monthly["mode"] == "Rail", "total_trips"].sum()
+        insight(
+            f"Only {n_months} months in the OD dataset so far — too short to call this a trend, but real: "
+            f"heavy rail alone carries {rail_total / 1e6:.1f}M trips over that window. Rail and light rail use "
+            "their own route codes in this dataset (not a GTFS route number), so a naive join silently drops "
+            "them — worth knowing if you extend this analysis."
+        )
+
+    with c2:
+        st.subheader("Ridership by time-of-day block")
+        by_time = load_ridership_by_time_block()
+        fig = px.bar(
+            by_time,
+            x="label",
+            y="avg_trips_per_day",
+            labels={"avg_trips_per_day": "Avg trips / day in that block", "label": ""},
+        )
+        fig.update_traces(marker_color="#3ea6ff")
+        style_fig(fig, height=360, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+        pm_peak = by_time[by_time["time_grouping"] == "Weekday (3:00pm-6:59:59pm)"]
+        insight(
+            "The source data's own time bands don't isolate a morning peak (it's folded into one broad "
+            "8:30am–3pm interpeak block) — only the PM peak (3–7pm) is broken out separately"
+            + (
+                f", and it carries {pm_peak.iloc[0]['avg_trips_per_day'] / 1e6:.2f}M trips/day on average, "
+                "the single busiest block."
+                if not pm_peak.empty
+                else "."
+            )
+        )
+
+    st.subheader("Busiest stations, real ridership")
+    stations = load_busiest_stations()
+    fig = px.bar(
+        stations.sort_values("total_volume"),
+        x="total_volume",
+        y="station",
+        orientation="h",
+        labels={"total_volume": "Total trips (origin + destination)", "station": ""},
+    )
+    fig.update_traces(marker_color="#2ee6a6")
+    style_fig(fig, height=440, showlegend=False)
+    st.plotly_chart(fig, use_container_width=True)
+    top_station = stations.iloc[0]
+    insight(
+        f"<b>{top_station['station']}</b> is the busiest point in the network by real ridership — "
+        f"{top_station['total_volume']:,.0f} trips starting or ending there over the collection window."
+    )
+
+    st.subheader("Weekly schedule pattern: stop-visit density")
+    heat = load_schedule_heatmap()
+    if heat.empty:
+        st.info("Not enough polled data yet.")
+    else:
+        pivot = heat.pivot(index="dow", columns="hour", values="n_stop_visits").reindex(
+            index=range(1, 8), columns=range(24)
+        )
+        pivot.index = [DOW_NAMES[d] for d in pivot.index]
+        fig = px.imshow(
+            pivot,
+            color_continuous_scale=["#0d1117", "#1b3a5c", "#3ea6ff", "#8fd6ff"],
+            labels=dict(x="Hour of day", y="", color="Stop visits"),
+            aspect="auto",
+        )
+        style_fig(fig, height=340)
+        fig.update_xaxes(dtick=2)
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "Scheduled stop-visit volume (a service-intensity proxy, not ridership — the OD data has no "
+            "hourly breakdown) by day of week and hour. Each weekday is backed by exactly one calendar day "
+            "in the current ~8-day collection window, so this shows this specific week, not a many-week average."
+        )
 
 # ── Demand vs reliability ───────────────────────────────────────────────
 
