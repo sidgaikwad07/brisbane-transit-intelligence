@@ -48,10 +48,26 @@ not just code — the goal is a working artifact at every checkpoint.
   GTFS-RT, not a one-time pull; installed as a LaunchAgent (`scripts/install_traffic_poller_service.sh`)
 - [x] Weather ingestion (`ingestion/weather.py`, Open-Meteo archive + forecast endpoints) — unlike
   traffic, has real history, so this backfills the whole delay-collection window in one run
-- [ ] Join traffic volume to nearby delayed trips (spatial join via PostGIS)
-- [ ] Feature engineering: route, time-of-day, day-of-week, congestion, weather
-- [ ] Train XGBoost delay-prediction model, evaluate (MAE, and P(delay > 5 min))
-- **Demo artifact:** model card — features, performance, top delay drivers per route
+- [x] Signal-location reference data (`ingestion/traffic_signal_locations.py`) — BCC's rolling
+  traffic feed carries no lat/lon of its own (only a signal-controller id), discovered while
+  scoping this step; this one-time pull of BCC's separate "Traffic Management — Signal locations"
+  dataset (1,020 sites) is what makes a spatial join possible at all
+- [x] Join traffic volume to nearby delayed trips (`models/build_features.py`) — PostGIS
+  `ST_DWithin` (400m) from each stop to nearby signals, congestion averaged into 30-minute time
+  buckets (the feed updates in irregular batches, not continuously); joined against daily weather
+  and an hourly count of active system-wide disruption alerts
+- [x] Feature engineering: mode, route, hour, day-of-week, local traffic saturation, weather,
+  disruption-alert count — all in `models/build_features.py`
+- [x] Train XGBoost delay-prediction model, evaluate (`models/train_delay_model.py`) — MAE
+  (regression) and accuracy/precision/recall/F1/ROC-AUC (classifying >5min late), each against a
+  naive baseline. **Time-split result is a real negative finding, not a bug:** the model currently
+  loses to its own baseline, because the ~3.5-day collection window contains one clear reliability
+  regime shift (a strike-caused disruption on 25-26 Sep, much better on 27-28 Sep) that a few days
+  of data can't teach a model to generalize across — confirmed via a diagnostic random-split run,
+  where the same features clearly beat baseline. More days of data (spanning multiple
+  disruption/no-disruption cycles) is the actual fix, not a modeling trick.
+- [x] **Demo artifact:** [`docs/delay_model_card.md`](docs/delay_model_card.md) — features,
+  time-split vs. random-split performance, feature importance chart, honest caveats
 
 ## Week 4 — Dashboard + polish
 - [x] Streamlit dashboard (`dashboard/app.py`, pulled forward) — network health, live delay view,
