@@ -78,6 +78,7 @@ build plan and current progress.
 | GTFS-RT Vehicle Positions | Protobuf | ~20-30s | `https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions` |
 | GTFS-RT Service Alerts | Protobuf | On change | `https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts` |
 | BCC Intersection traffic volume | JSON (Opendatasoft) | Near real-time | `https://data.brisbane.qld.gov.au/explore/dataset/traffic-data-at-intersection/` |
+| BCC Traffic signal locations | JSON (Opendatasoft) | Static (one-time pull) | `https://data.brisbane.qld.gov.au/explore/dataset/traffic-management-signal-locations/` |
 | Brisbane daily weather | JSON | Daily (historical + forecast) | `https://archive-api.open-meteo.com/v1/archive` |
 
 ## Getting started
@@ -90,7 +91,12 @@ python -m ingestion.gtfs_static           # loads the static schedule
 python -m ingestion.gtfs_realtime_poller  # polls live feeds (Ctrl+C to stop)
 python -m ingestion.od_trips              # loads the 3 most recent months of real ridership
 python -m ingestion.bcc_traffic           # polls BCC intersection traffic (Ctrl+C to stop)
+python -m ingestion.traffic_signal_locations  # one-time: signal locations, needed for the spatial join below
 python -m ingestion.weather               # backfills daily Brisbane weather since 2026-01-01
+
+# Once the traffic poller's been running a while:
+python models/build_features.py           # spatial + temporal join -> data/exports/delay_features.csv
+python models/train_delay_model.py        # trains + evaluates -> docs/delay_model_card.md
 ```
 
 ### Running the poller as a background service (macOS)
@@ -237,6 +243,28 @@ citywide). Routes 220 and 227 from the Manly/Lota/Cleveland case study independe
 citywide top 15 too, confirming that case study's finding holds beyond just that corridor.
 
 ![Where should Translink act first?](docs/images/priority_routes.png)
+
+## Delay-prediction model (Week 3) — and a real negative result
+
+Full write-up in [`docs/delay_model_card.md`](docs/delay_model_card.md). Two XGBoost models
+(regression on delay seconds, classification on ">5min late") trained on real polled delay
+observations, spatially joined to BCC intersection traffic — `ingestion/traffic_signal_locations.py`
+pulls BCC's separate signal-location dataset (the rolling traffic feed has no lat/lon of its own,
+only a signal-controller id) so `models/build_features.py` can do a genuine PostGIS `ST_DWithin`
+join — plus daily weather and a system-wide disruption-alert count.
+
+**The honest result:** on a real time-based train/test split (the only fair way to evaluate this),
+the model currently **loses to a naive baseline**. That's diagnosable, not a bug: the ~3.5-day
+collection window contains one clear reliability regime shift — a strike-caused disruption made
+25-26 Sep much less reliable than 27-28 Sep — and a few days of data isn't enough for a model to
+learn to generalize across that shift. A diagnostic random-split run (same features, deliberately
+leaking time information a real deployment wouldn't have) confirms the features *do* carry real
+signal — regressor MAE beats baseline (217s vs. 242s) and the classifier beats baseline too — so
+this points at needing more days of data spanning multiple disruption cycles, not a broken feature
+set. Published as-is because a negative result honestly explained is worth more than a cherry-picked
+split that hides it.
+
+![Feature importance](docs/images/delay_model_feature_importance.png)
 
 ## Project layout
 

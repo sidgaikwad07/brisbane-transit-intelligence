@@ -174,6 +174,21 @@ CREATE INDEX IF NOT EXISTS idx_intersection_traffic_recorded_at
 CREATE INDEX IF NOT EXISTS idx_intersection_traffic_tsc
     ON raw.intersection_traffic (tsc);
 
+-- BCC's traffic-signal-controller locations (a separate, static dataset from
+-- the rolling traffic readings above) — needed because raw.intersection_traffic
+-- has no lat/lon of its own, only the tsc id. Static reference data (signals
+-- don't move), so this is a one-time pull, not a poller.
+CREATE TABLE IF NOT EXISTS raw.traffic_signal_locations (
+    tsc        TEXT PRIMARY KEY,
+    subsystem  INTEGER,
+    areanum    TEXT,
+    lat        DOUBLE PRECISION,
+    lon        DOUBLE PRECISION,
+    geom       geometry(Point, 4326)
+);
+CREATE INDEX IF NOT EXISTS idx_signal_locations_geom
+    ON raw.traffic_signal_locations USING gist (geom);
+
 CREATE TABLE IF NOT EXISTS raw.weather_daily (
     date         DATE PRIMARY KEY,
     rainfall_mm  DOUBLE PRECISION,

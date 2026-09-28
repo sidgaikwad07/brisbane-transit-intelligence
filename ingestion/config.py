@@ -23,6 +23,15 @@ BCC_TRAFFIC_API_URL = (
     "traffic-data-at-intersection/records"
 )
 
+# Static reference data — traffic signal controller (tsc) site locations.
+# raw.intersection_traffic has no lat/lon of its own; this is what makes a
+# spatial join to it possible. Signals don't move, so this is pulled once,
+# not polled.
+BCC_SIGNAL_LOCATIONS_API_URL = (
+    "https://data.brisbane.qld.gov.au/api/explore/v2.1/catalog/datasets/"
+    "traffic-management-signal-locations/records"
+)
+
 # Queensland Government open data (CKAN) — monthly aggregated go card/EMV/
 # paper-ticket origin-destination trip counts, Jan 2022 onwards.
 # https://www.data.qld.gov.au/dataset/translink-origin-destination-trips-2022-onwards
