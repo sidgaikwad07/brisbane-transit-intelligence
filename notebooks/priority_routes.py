@@ -47,11 +47,68 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+def mode_aggregate_rows(engine, od: pd.DataFrame, n_weekdays: int, service_ids: set[str]) -> pd.DataFrame:
+    """Rail and the Gold Coast Light Rail are reported by the OD dataset as
+    one system-wide bucket each ("Rail", "GCLR") rather than per individual
+    line, the way bus routes get their own number — GTFS has ~60 separate
+    rail route_ids and codes light rail as "L1", so neither OD code matches
+    any GTFS route_short_name and the normal per-route join silently drops
+    both modes entirely. This computes each as one network-wide aggregate
+    "route" instead, so they at least show up rather than vanishing.
+
+    Marked with is_aggregate=True so the chart can render them distinctly
+    (a whole network isn't really comparable to one bus route the way two
+    bus routes are comparable to each other) — included for visibility, not
+    presented as an apples-to-apples ranking against individual routes.
+    """
+    rows = []
+    for od_code, mode, route_types in [("Rail", "Rail", (2,)), ("GCLR", "Tram/Light Rail", (0,))]:
+        od_riders = od.loc[od["route"] == od_code, "weekday_trips"].sum() / n_weekdays
+        if od_riders <= 0:
+            continue
+        sched = pd.read_sql(
+            """
+            SELECT count(DISTINCT t.trip_id) AS n
+            FROM raw.trips t JOIN raw.routes r ON r.route_id = t.route_id
+            WHERE t.service_id = ANY(%(service_ids)s) AND r.route_type = ANY(%(route_types)s)
+            """,
+            engine,
+            params={"service_ids": list(service_ids), "route_types": list(route_types)},
+        ).iloc[0]["n"]
+        otp_row = pd.read_sql(
+            """
+            SELECT
+                round(sum(on_time_pct * n_stop_visits) / sum(n_stop_visits), 1) AS on_time_pct,
+                sum(n_stop_visits) AS n_stop_visits, sum(n_trips) AS n_trips
+            FROM marts.mart_on_time_performance WHERE mode = %(mode)s
+            """,
+            engine,
+            params={"mode": mode},
+        ).iloc[0]
+        if sched <= 0 or pd.isna(otp_row["on_time_pct"]):
+            continue
+        rows.append(
+            {
+                "route": f"{mode} (network)",
+                "route_long_name": f"All {mode} lines combined",
+                "mode": mode,
+                "avg_weekday_riders": od_riders,
+                "scheduled_trips": sched,
+                "riders_per_trip": od_riders / sched,
+                "on_time_pct": otp_row["on_time_pct"],
+                "n_stop_visits": otp_row["n_stop_visits"],
+                "n_trips": otp_row["n_trips"],
+                "is_aggregate": True,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def build_priority_table(engine) -> pd.DataFrame:
     months = od_months_covered(engine)
     n_weekdays = count_weekdays(months)
 
-    scheduled, weekday_date = scheduled_weekday_trips_by_route(engine)
+    scheduled, weekday_date, service_ids = scheduled_weekday_trips_by_route(engine)
 
     od = pd.read_sql(
         "SELECT route, route_long_name, mode, weekday_trips FROM marts.mart_od_demand_by_route", engine
@@ -60,7 +117,7 @@ def build_priority_table(engine) -> pd.DataFrame:
     demand = od.merge(scheduled, on="route", how="inner")
     demand = demand[demand["scheduled_trips"] >= MIN_SCHEDULED_TRIPS].copy()
     demand["riders_per_trip"] = demand["avg_weekday_riders"] / demand["scheduled_trips"]
-    demand["demand_pctile"] = demand["riders_per_trip"].rank(pct=True) * 100
+    demand["is_aggregate"] = False
 
     otp = pd.read_sql(
         "SELECT route_short_name AS route, on_time_pct, n_stop_visits, n_trips "
@@ -68,9 +125,16 @@ def build_priority_table(engine) -> pd.DataFrame:
         f"WHERE n_stop_visits >= {MIN_STOP_VISITS} AND n_trips >= {MIN_OTP_TRIPS}",
         engine,
     )
-    otp["otp_pctile"] = otp["on_time_pct"].rank(pct=True) * 100
 
     merged = demand.merge(otp, on="route", how="inner")
+    aggregates = mode_aggregate_rows(engine, od, n_weekdays, service_ids)
+    merged = pd.concat([merged, aggregates], ignore_index=True)
+
+    # Percentile ranks computed AFTER folding in the aggregates, so "Rail
+    # (network)" and "GCLR (network)" sit in the same ranked population as
+    # every individual bus/ferry route rather than being scored separately.
+    merged["demand_pctile"] = merged["riders_per_trip"].rank(pct=True) * 100
+    merged["otp_pctile"] = merged["on_time_pct"].rank(pct=True) * 100
     # Both factors matter multiplicatively: a route only near the top of one
     # axis doesn't rank highly just for being extreme on the other.
     merged["priority_score"] = merged["demand_pctile"] * (100 - merged["otp_pctile"])
@@ -78,39 +142,65 @@ def build_priority_table(engine) -> pd.DataFrame:
 
 
 def plot_priority_matrix(df: pd.DataFrame) -> None:
+    """Top-N routes get a small numbered badge on the scatter point plus a
+    ranked list in a side panel, rather than inline text labels next to
+    each dot — with several of the top routes clustered close together in
+    on-time% (mid-40s to mid-50s), fixed-offset inline labels collided into
+    an unreadable pile (confirmed in an earlier version of this chart).
+    Numbers collide far less than full route names, and the side list can
+    show more per route (mode, riders/trip) than would ever fit on-chart.
+    """
     CHART_PATH.parent.mkdir(parents=True, exist_ok=True)
-    top = df.head(TOP_N)
+    top = df.head(TOP_N).reset_index(drop=True)
 
-    fig, ax = plt.subplots(figsize=(9, 7), dpi=200)
+    fig = plt.figure(figsize=(11.5, 7), dpi=200)
     fig.patch.set_facecolor("#fcfcfb")
+    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[2.5, 1], left=0.075, right=0.97, top=0.84, bottom=0.1, wspace=0.05)
+    ax = fig.add_subplot(gs[0, 0])
+    ax_list = fig.add_subplot(gs[0, 1])
+    ax_list.axis("off")
     ax.set_facecolor("#fcfcfb")
-    fig.subplots_adjust(top=0.84, bottom=0.1, left=0.1, right=0.97)
 
     med_otp = df["on_time_pct"].median()
     med_demand = df["riders_per_trip"].median()
     ax.axvline(med_otp, color=GRIDLINE, linewidth=1.4, zorder=1)
     ax.axhline(med_demand, color=GRIDLINE, linewidth=1.4, zorder=1)
 
-    for mode, g in df.groupby("mode"):
+    for mode, g in df[~df["is_aggregate"]].groupby("mode"):
         ax.scatter(
             g["on_time_pct"], g["riders_per_trip"],
             s=28, color=MODE_COLORS.get(mode, "#898781"), alpha=0.55, zorder=3, label=mode, linewidths=0,
         )
+    # Network-wide aggregates (Rail, GCLR — see mode_aggregate_rows) get a
+    # star marker: a whole network isn't the same kind of thing as one bus
+    # route, so it shouldn't look like just another dot in the swarm.
+    aggregates = df[df["is_aggregate"]]
+    if not aggregates.empty:
+        ax.scatter(
+            aggregates["on_time_pct"], aggregates["riders_per_trip"],
+            s=140, marker="*", color=[MODE_COLORS.get(m, "#898781") for m in aggregates["mode"]],
+            edgecolors="white", linewidths=1, zorder=4, label="Network aggregate",
+        )
 
-    for _, row in top.iterrows():
+    for rank, row in top.iterrows():
+        marker = "*" if row["is_aggregate"] else "o"
+        size = 160 if row["is_aggregate"] else 60
         ax.scatter(
             row["on_time_pct"], row["riders_per_trip"],
-            s=60, color=MODE_COLORS.get(row["mode"], "#898781"), edgecolors="white", linewidths=1.2, zorder=4,
+            marker=marker, s=size, color=MODE_COLORS.get(row["mode"], "#898781"),
+            edgecolors="white", linewidths=1.2, zorder=5,
         )
         ax.annotate(
-            row["route"],
+            str(rank + 1),
             xy=(row["on_time_pct"], row["riders_per_trip"]),
-            xytext=(5, 4),
+            xytext=(0, 0),
             textcoords="offset points",
-            fontsize=7.5,
+            fontsize=6.5,
             fontweight="bold",
-            color=INK_PRIMARY,
-            zorder=5,
+            color="white",
+            ha="center",
+            va="center",
+            zorder=6,
         )
 
     ax.set_yscale("log")
@@ -122,12 +212,26 @@ def plot_priority_matrix(df: pd.DataFrame) -> None:
     ax.spines["bottom"].set_color(INK_MUTED)
     ax.spines["left"].set_color(INK_MUTED)
     ax.tick_params(colors=INK_MUTED, labelsize=8.5)
-    ax.legend(frameon=False, loc="upper right", fontsize=9)
+    ax.legend(frameon=False, loc="upper right", fontsize=8.5)
 
     ax.text(
-        med_otp - 1, ax.get_ylim()[1] * 0.75, "HIGH DEMAND\nLOW RELIABILITY\n(fix first)",
+        med_otp - 1, ax.get_ylim()[1] * 0.6, "HIGH DEMAND\nLOW RELIABILITY\n(fix first)",
         fontsize=8.5, fontweight="bold", color="#d03b3b", ha="right", va="top",
     )
+
+    # Side list: rank, route, mode, on-time%, riders/trip — everything the
+    # on-chart badge can't show without colliding.
+    ax_list.text(0.0, 1.0, f"Top {len(top)} by priority score", fontsize=10, fontweight="bold",
+                  color=INK_PRIMARY, va="top", transform=ax_list.transAxes)
+    line_h = 0.95 / len(top)
+    for rank, row in top.iterrows():
+        y = 0.92 - rank * line_h
+        name = f"{rank + 1}. {row['route']}"
+        ax_list.text(0.0, y, name, fontsize=7.8, fontweight="bold", color=INK_PRIMARY,
+                      va="top", transform=ax_list.transAxes)
+        stats = f"{row['mode']} · {row['on_time_pct']:.0f}% on-time · {row['riders_per_trip']:.0f} riders/trip"
+        ax_list.text(0.0, y - line_h * 0.42, stats, fontsize=6.8, color=INK_SECONDARY,
+                      va="top", transform=ax_list.transAxes)
 
     fig.text(
         0.02, 0.95, "Where should Translink act first?", fontsize=15, fontweight="bold",
@@ -135,7 +239,8 @@ def plot_priority_matrix(df: pd.DataFrame) -> None:
     )
     fig.text(
         0.02, 0.905,
-        "Real ridership vs. measured on-time performance — top-left is the priority zone",
+        "Real ridership vs. measured on-time performance — top-left is the priority zone. "
+        "Stars are network-wide, not a single route (see caption).",
         fontsize=9.5, color=INK_SECONDARY, va="top",
     )
 
@@ -169,6 +274,17 @@ def write_report(df: pd.DataFrame, weekday_date, months: list) -> None:
         "",
         "![Where should Translink act first?](images/priority_routes.png)",
         "",
+        (
+            "**\"Rail (network)\" and \"Tram/Light Rail (network)\" are network-wide aggregates, not "
+            "single routes.** The OD dataset reports heavy rail and the Gold Coast Light Rail as one "
+            "system-wide bucket each (\"Rail\", \"GCLR\") rather than per individual line the way bus "
+            "routes get their own number — so unlike every bus/ferry row below, these two represent "
+            "an entire network's average, not one corridor. Included so both modes are visible at "
+            "all (a plain per-route join drops them completely — neither OD code matches a GTFS "
+            "route_short_name), marked with a star on the chart, not ranked as if directly comparable "
+            "to a single route."
+        ),
+        "",
         "## Top priority routes",
         "",
         "| Route | Mode | Avg weekday riders | Riders/trip (percentile) | On-time % (percentile) |",
@@ -197,13 +313,22 @@ def write_report(df: pd.DataFrame, weekday_date, months: list) -> None:
             "punctual one."
         ),
         "",
-        (
-            "Two routes from the Manly/Lota/Cleveland case study (`docs/manly_lota_service_gap.md`) "
-            "— 220 and 227 — appear in this citywide top list too, independently confirming that "
-            "case study's finding: they're not just locally notable, they're among the routes "
-            "Brisbane's whole network most needs to fix."
-        ),
-        "",
+    ]
+    case_study_routes = [r for r in ("220", "227") if r in set(top["route"])]
+    if case_study_routes:
+        plural = "s" if len(case_study_routes) > 1 else ""
+        verb = "appear" if len(case_study_routes) > 1 else "appears"
+        lines.append(
+            f"Route{plural} {' and '.join(case_study_routes)} from the Manly/Lota/Cleveland case study "
+            f"(`docs/manly_lota_service_gap.md`) {verb} in this citywide top list too, independently "
+            "confirming that case study's finding: "
+            + ("they're" if len(case_study_routes) > 1 else "it's")
+            + " not just locally notable, "
+            + ("they're" if len(case_study_routes) > 1 else "it's")
+            + " among the routes Brisbane's whole network most needs to fix."
+        )
+        lines.append("")
+    lines += [
         "## Caveats",
         "",
         (

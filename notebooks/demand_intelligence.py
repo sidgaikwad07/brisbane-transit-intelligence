@@ -97,10 +97,16 @@ def od_months_covered(engine) -> list:
     return sorted(pd.read_sql("SELECT DISTINCT month FROM raw.od_trips ORDER BY month", engine)["month"])
 
 
-def scheduled_weekday_trips_by_route(engine) -> tuple[pd.DataFrame, object]:
+def scheduled_weekday_trips_by_route(engine) -> tuple[pd.DataFrame, object, set[str]]:
     """Scheduled trips per route_short_name on the representative weekday —
     same date-resolution method as notebooks/network_summary.py, so this is
     directly comparable to that report's numbers.
+
+    Also returns the resolved service_ids for that date, so callers that
+    need a *mode*-level (not just route-level) scheduled-trip count — see
+    priority_routes.mode_aggregate_rows(), for the routes OD reports as one
+    system-wide bucket rather than per line — don't have to re-resolve the
+    representative date a second time.
     """
     calendar = pd.read_sql("SELECT * FROM raw.calendar", engine)
     calendar_dates = pd.read_sql("SELECT * FROM raw.calendar_dates", engine)
@@ -121,7 +127,7 @@ def scheduled_weekday_trips_by_route(engine) -> tuple[pd.DataFrame, object]:
         engine,
         params={"service_ids": list(service_ids)},
     )
-    return df, weekday_date
+    return df, weekday_date, service_ids
 
 
 def count_weekdays(months: list) -> int:
@@ -361,6 +367,14 @@ def write_report(
             "no GTFS route_id, and the static feed republishes the same route number across "
             "timetable-version-specific route_id rows, so this is the only reliable join key."
         ),
+        (
+            "- **Heavy rail and the Gold Coast Light Rail are absent from the per-route charts "
+            "below, not genuinely quiet** — the OD dataset reports them as one system-wide bucket "
+            "each (\"Rail\", \"GCLR\"), not per individual line, so neither matches a GTFS route "
+            "short name and the per-route join above silently drops both (found 2026-09-29; "
+            "`docs/priority_routes_findings.md` computes both as an explicit network-wide "
+            "aggregate instead — see its \"network aggregate\" note for real numbers)."
+        ),
         "- Weekday count for the daily-average calculation is business days (Mon-Fri); it doesn't subtract public holidays, so the true daily average is a little higher than shown.",
         (
             "- A handful of origin-destination stop pairs don't resolve to a name — those stop "
@@ -397,7 +411,7 @@ def main() -> None:
     print(f"OD months loaded: {[m.isoformat() for m in months]}")
 
     od = fetch_od_marts(engine)
-    scheduled, weekday_date = scheduled_weekday_trips_by_route(engine)
+    scheduled, weekday_date, _service_ids = scheduled_weekday_trips_by_route(engine)
     print(f"Representative weekday for scheduled trips: {weekday_date}")
 
     n_weekdays = count_weekdays(months)

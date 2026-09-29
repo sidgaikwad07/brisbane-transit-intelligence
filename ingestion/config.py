@@ -49,3 +49,18 @@ BRISBANE_LAT = -27.4698
 BRISBANE_LON = 153.0251
 
 RAW_DATA_DIR = "data/raw"
+
+# ── Multi-city comparison (added 2026-09-29) ──────────────────────────────
+# Sydney and Melbourne's static GTFS is freely downloadable, no API key.
+# Their GTFS-Realtime feeds DO require a free self-registered API key
+# (Transport for NSW / Transport Victoria open data portals) that this
+# project can't obtain on its own — live reliability/headway comparison is
+# blocked on that until a key is supplied. See ROADMAP.md.
+SYDNEY_GTFS_STATIC_URL = (
+    "https://opendata.transport.nsw.gov.au/data/dataset/d1f68d4f-b778-44df-9823-cf2fa922e47f/"
+    "resource/67974f14-01bf-47b7-bfa5-c7f2f8a950ca/download/full_greater_sydney_gtfs_static_0.zip"
+)
+MELBOURNE_GTFS_STATIC_URL = (
+    "https://opendata.transport.vic.gov.au/dataset/3f4e292e-7f8a-4ffe-831f-1953be0fe448/"
+    "resource/fb152201-859f-4882-9206-b768060b50ad/download/gtfs.zip"
+)
