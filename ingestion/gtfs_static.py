@@ -1,4 +1,10 @@
-"""Download the SEQ GTFS static feed and load it into Postgres.
+"""Download a GTFS static feed and load it into Postgres.
+
+Brisbane-specific by default (SEQ feed -> raw schema); every function takes
+an explicit feed_url/schema/extract_dir so ingestion/gtfs_static_sydney.py
+and ingestion/gtfs_static_melbourne.py can reuse this same loader against
+their own feed and their own schema (raw_syd / raw_mel — see
+scripts/setup_city_schema.py) without duplicating the parsing logic.
 
 Usage:
     python -m ingestion.gtfs_static
@@ -40,15 +46,15 @@ DATE_COLS = {"calendar": ["start_date", "end_date"], "calendar_dates": ["date"]}
 BOOL_COLS = {"calendar": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]}
 
 
-def download_and_extract() -> Path:
-    log.info("Downloading GTFS static feed from %s", GTFS_STATIC_URL)
-    resp = requests.get(GTFS_STATIC_URL, timeout=60)
+def download_and_extract(feed_url: str = GTFS_STATIC_URL, extract_dir: Path = EXTRACT_DIR) -> Path:
+    log.info("Downloading GTFS static feed from %s", feed_url)
+    resp = requests.get(feed_url, timeout=120)
     resp.raise_for_status()
-    EXTRACT_DIR.mkdir(parents=True, exist_ok=True)
+    extract_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-        zf.extractall(EXTRACT_DIR)
-    log.info("Extracted GTFS feed to %s", EXTRACT_DIR)
-    return EXTRACT_DIR
+        zf.extractall(extract_dir)
+    log.info("Extracted GTFS feed to %s", extract_dir)
+    return extract_dir
 
 
 def _coerce(df: pd.DataFrame, table: str) -> pd.DataFrame:

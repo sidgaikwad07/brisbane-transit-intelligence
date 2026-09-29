@@ -44,19 +44,23 @@ def main() -> None:
         df.to_csv(csv_path, index=False)
         print(f"Wrote {len(df):,} rows to {csv_path}")
 
+    EXCEL_MAX_ROWS = 1_048_576  # Excel's own hard sheet-row limit
     xlsx_path = EXPORT_DIR / "week2_data.xlsx"
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
         for name, df in frames.items():
+            if len(df) > EXCEL_MAX_ROWS - 1:  # -1 for the header row
+                print(
+                    f"Skipping '{name}' in the xlsx ({len(df):,} rows > Excel's "
+                    f"{EXCEL_MAX_ROWS:,}-row limit) — full data is in {name}.csv"
+                )
+                continue
             # Excel has no timezone-aware datetime type; drop the (UTC)
             # tzinfo rather than converting to a local zone, so the values
             # printed still match what's in the CSVs and the Postgres columns.
             df = df.copy()
             for col in df.select_dtypes(include=["datetimetz"]).columns:
                 df[col] = df[col].dt.tz_localize(None)
-            # Excel sheet names cap at 31 chars and stop_delay can run into
-            # six figures of rows — well under Excel's ~1.05M row limit, so
-            # no truncation needed, just the name.
-            df.to_excel(writer, sheet_name=name[:31], index=False)
+            df.to_excel(writer, sheet_name=name[:31], index=False)  # Excel sheet names cap at 31 chars
     print(f"Wrote combined workbook to {xlsx_path}")
 
 
