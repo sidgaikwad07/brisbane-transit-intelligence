@@ -266,6 +266,28 @@ split that hides it.
 
 ![Feature importance](docs/images/delay_model_feature_importance.png)
 
+## City comparison — Brisbane vs. Sydney vs. Melbourne
+
+Full write-up in [`docs/city_comparison.md`](docs/city_comparison.md). Real static-GTFS data for
+all three, loaded into isolated schemas (`raw_syd`, `raw_mel`, cloned from `raw` via
+[`scripts/setup_city_schema.py`](scripts/setup_city_schema.py) — Brisbane's own tables are
+untouched) and compared with the same representative-weekday methodology as every other finding
+here, not quoted from a published report.
+
+![Network scale comparison](docs/images/city_comparison.png)
+
+Two real data-quality findings surfaced while building this, both documented rather than quietly
+patched: Sydney's published "Greater Sydney" feed is actually **statewide** (689 agencies, 45% of
+stops fall outside a generous Sydney-metro bounding box), and 88% of its raw route count turned
+out to be dedicated school-bus service (route_type 712, identified by literally reading route
+names — "X to \<School Name\>") that had to be found and excluded before the comparison meant
+anything. See the doc's caveats for the full detail.
+
+**This is a static-schedule comparison only** — network size and mode mix, not measured
+reliability. Sydney and Melbourne's GTFS-Realtime feeds (needed for an on-time-performance
+comparison, the more interesting question) require a free API key this project doesn't have —
+see `ROADMAP.md`'s "City comparison" section for exactly what's blocked and what unblocks it.
+
 ## Project layout
 
 ```text
