@@ -77,6 +77,41 @@ not just code — the goal is a working artifact at every checkpoint.
 - [ ] Screen-recorded demo (GIF/video) for LinkedIn
 - [ ] Write-up: what the data showed, one or two concrete, specific findings about Brisbane's network
 
+## City comparison (added 2026-09-29) — Brisbane vs. Sydney vs. Melbourne
+User asked for a cross-city comparison so Brisbane's findings could be benchmarked against peers
+and turned into recommendations. Explicitly scoped as the "full live pipeline" option (not a
+quick published-stats comparison) — a multi-phase effort, tracked here.
+
+- [x] **Phase 1 — static network comparison.** Both cities' static GTFS are freely downloadable,
+  no API key: `ingestion/gtfs_static_sydney.py` (Transport for NSW, a single flat feed, ~1.4GB
+  uncompressed) and `ingestion/gtfs_static_melbourne.py` (Transport Victoria — structurally a zip
+  of separate per-mode sub-feeds; scoped to metro train/tram/bus, excluding V/Line
+  regional/interstate rail, coach, and SkyBus). Loaded into their own schemas (`raw_syd`,
+  `raw_mel`, cloned from `raw`'s table structure via `scripts/setup_city_schema.py`) so Brisbane's
+  own tables/marts/dashboard are completely untouched. `notebooks/city_comparison.py` computes
+  network scale (stops, routes, scheduled weekday trips, mode mix) from each city's own schedule,
+  using the same representative-weekday methodology as every other Brisbane finding — see
+  `docs/city_comparison.md`. Real headline numbers (weekday, general-public service only —
+  school buses and regional/interstate excluded, see the doc's caveats): Brisbane 13,094 stops /
+  494 routes / 20,853 trips; Sydney 170,908 stops / 1,288 routes / 44,860 trips; Melbourne 27,057
+  stops / 655 routes / 31,737 trips. Two real data-quality findings surfaced building this, both
+  documented rather than silently patched: Sydney's "Greater Sydney" feed is actually
+  **statewide** (689 agencies, 45% of stops outside a generous Sydney-metro bounding box) and its
+  original route count was 88% dedicated school-bus service (route_type 712) that had to be
+  identified and excluded to make the comparison meaningful at all.
+- [ ] **Phase 2 — live reliability/headway comparison, BLOCKED on API keys.** Sydney
+  (opendata.transport.nsw.gov.au) and Melbourne (opendata.transport.vic.gov.au) both require a
+  free, self-registered API key for their GTFS-Realtime feeds — registration this project can't
+  complete on its own (needs a real person's sign-up). **Action needed: register for both and add
+  the keys to `.env`** (`TFNSW_API_KEY`, `PTV_API_KEY` — not yet added to `ingestion/config.py`,
+  add alongside the keys). Once supplied, Phase 2 is: pollers for both cities' GTFS-RT Trip
+  Updates (mirroring `ingestion/gtfs_realtime_poller.py`), a multi-week collection window (Brisbane
+  itself needed ~10 days before its own OTP numbers were trustworthy — expect similarly for these),
+  then a real on-time-performance / headway comparison across all three cities.
+- [ ] **Phase 3 — turn the comparison into recommendations.** Once Phase 2 has enough real data,
+  fold city-comparison findings into `docs/recommendations.md` alongside the existing
+  Brisbane-only findings.
+
 ## Explicitly out of scope (for this version)
 Airflow, dbt Cloud, cloud data warehouse, live public hosting, demand
 *forecasting* (predicting future demand — distinct from the real historical

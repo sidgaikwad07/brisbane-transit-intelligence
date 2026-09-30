@@ -44,6 +44,12 @@ TABLE_COLUMNS: dict[str, list[str]] = {
 
 DATE_COLS = {"calendar": ["start_date", "end_date"], "calendar_dates": ["date"]}
 BOOL_COLS = {"calendar": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]}
+# Primary-key column per table, where one exists as a single column — used
+# to de-duplicate when appending a second/third sub-feed on top of an
+# already-loaded one (see gtfs_static_melbourne.py, whose per-mode
+# sub-feeds turned out to share some stop_ids across modes at real physical
+# interchanges — not every ID collision there is a bug to namespace away).
+PK_COLUMNS = {"agency": "agency_id", "routes": "route_id", "stops": "stop_id", "trips": "trip_id"}
 
 
 def download_and_extract(feed_url: str = GTFS_STATIC_URL, extract_dir: Path = EXTRACT_DIR) -> Path:
@@ -75,7 +81,9 @@ def _coerce(df: pd.DataFrame, table: str) -> pd.DataFrame:
     return df
 
 
-def load_table(engine, extract_dir: Path, table: str, chunksize: int | None = None) -> int:
+def load_table(
+    engine, extract_dir: Path, table: str, chunksize: int | None = None, schema: str = "raw", truncate: bool = True
+) -> int:
     path = extract_dir / f"{table}.txt"
     if not path.exists():
         log.warning("%s.txt not present in feed, skipping", table)
@@ -83,29 +91,43 @@ def load_table(engine, extract_dir: Path, table: str, chunksize: int | None = No
 
     columns = TABLE_COLUMNS[table]
     total_rows = 0
-    with engine.begin() as conn:
-        conn.execute(text(f"TRUNCATE TABLE raw.{table} RESTART IDENTITY CASCADE"))
+    if truncate:
+        with engine.begin() as conn:
+            conn.execute(text(f"TRUNCATE TABLE {schema}.{table} RESTART IDENTITY CASCADE"))
+
+    pk_col = PK_COLUMNS.get(table)
+    existing_pks: set[str] | None = None
+    if not truncate and pk_col:
+        with engine.connect() as conn:
+            existing_pks = {row[0] for row in conn.execute(text(f"SELECT {pk_col} FROM {schema}.{table}"))}
 
     reader = pd.read_csv(path, dtype=str, chunksize=chunksize) if chunksize else [pd.read_csv(path, dtype=str)]
     for chunk in reader:
         chunk = chunk[[c for c in columns if c in chunk.columns]]
         chunk = _coerce(chunk, table)
-        chunk.to_sql(table, engine, schema="raw", if_exists="append", index=False, method="multi", chunksize=5000)
+        if existing_pks is not None and pk_col in chunk.columns:
+            before = len(chunk)
+            chunk = chunk[~chunk[pk_col].isin(existing_pks)]
+            skipped = before - len(chunk)
+            if skipped:
+                log.info("Skipped %d %s rows already present (shared %s across sub-feeds)", skipped, table, pk_col)
+            existing_pks.update(chunk[pk_col])
+        chunk.to_sql(table, engine, schema=schema, if_exists="append", index=False, method="multi", chunksize=5000)
         total_rows += len(chunk)
 
-    log.info("Loaded %s rows into raw.%s", total_rows, table)
+    log.info("Loaded %s rows into %s.%s", total_rows, schema, table)
     return total_rows
 
 
-def populate_stop_geometry(engine) -> None:
+def populate_stop_geometry(engine, schema: str = "raw") -> None:
     with engine.begin() as conn:
         conn.execute(
             text(
-                "UPDATE raw.stops SET geom = ST_SetSRID(ST_MakePoint(stop_lon, stop_lat), 4326) "
+                f"UPDATE {schema}.stops SET geom = ST_SetSRID(ST_MakePoint(stop_lon, stop_lat), 4326) "
                 "WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL"
             )
         )
-    log.info("Populated stop geometry")
+    log.info("Populated stop geometry for %s.stops", schema)
 
 
 def main() -> None:
