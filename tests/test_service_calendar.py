@@ -2,7 +2,7 @@ import datetime as dt
 
 import pandas as pd
 
-from ingestion.service_calendar import active_service_ids, pick_representative_date
+from ingestion.service_calendar import active_service_ids, complete_schedule_end, pick_representative_date
 
 
 def _calendar_row(service_id, start, end, days="1111100"):
@@ -73,3 +73,36 @@ def test_pick_representative_date_matches_median_not_outlier():
     picked = pick_representative_date(calendar, calendar_dates, trips_per_service, ("Tuesday",))
     assert picked != dt.date(2026, 9, 8)
     assert picked.strftime("%A") == "Tuesday"
+
+
+def test_complete_schedule_end_stops_where_one_mode_runs_out():
+    # Sydney's real shape: buses published to December, trains only to
+    # October; a rail-replacement bus (714) that stops early is ignored.
+    calendar = pd.DataFrame(
+        [
+            _calendar_row("bus", dt.date(2026, 10, 1), dt.date(2026, 12, 31), "1111111"),
+            _calendar_row("rail", dt.date(2026, 10, 1), dt.date(2026, 10, 28), "1111111"),
+            _calendar_row("trackwork", dt.date(2026, 10, 1), dt.date(2026, 10, 4), "1111111"),
+        ]
+    )
+    calendar_dates = pd.DataFrame(columns=["service_id", "date", "exception_type"])
+    trips = pd.DataFrame(
+        [
+            {"service_id": "bus", "route_type": 700, "n": 1000},
+            {"service_id": "rail", "route_type": 2, "n": 300},
+            {"service_id": "trackwork", "route_type": 714, "n": 50},
+        ]
+    )
+
+    assert complete_schedule_end(calendar, calendar_dates, trips) == dt.date(2026, 10, 28)
+
+
+def test_pick_representative_date_respects_end():
+    calendar = pd.DataFrame([_calendar_row("weekday", dt.date(2026, 10, 1), dt.date(2026, 12, 31))])
+    calendar_dates = pd.DataFrame(columns=["service_id", "date", "exception_type"])
+    trips_per_service = pd.Series({"weekday": 10})
+
+    picked = pick_representative_date(
+        calendar, calendar_dates, trips_per_service, ("Tuesday",), end=dt.date(2026, 10, 28)
+    )
+    assert picked <= dt.date(2026, 10, 28)

@@ -99,6 +99,14 @@ quick published-stats comparison) — a multi-phase effort, tracked here.
   **statewide** (689 agencies, 45% of stops outside a generous Sydney-metro bounding box) and its
   original route count was 88% dedicated school-bus service (route_type 712) that had to be
   identified and excluded to make the comparison meaningful at all.
+- [x] **Phase 1b — like-for-like service quality (added 2026-10-01).** All three feeds clipped to
+  their ABS Greater Capital City boundaries and weighed against where people live (ABS 2025
+  population grid, `ingestion/abs_reference.py`), via `notebooks/city_service_quality.py` — see
+  `docs/city_service_quality.md`. Headline: 70% of Greater Brisbane residents live within 400m of a
+  stop, close to Melbourne's 73%, but only 22% near a stop with 15-minute-or-better all-day service
+  (Melbourne 32%, Sydney 41%); Brisbane last at every frequency threshold tested. Also found and
+  fixed a Phase 1 bug: Sydney's representative weekday had no Sydney Trains service, because Sydney
+  Trains publishes only ~1 month ahead (`service_calendar.complete_schedule_end`).
 - [ ] **Phase 2 — live reliability/headway comparison, BLOCKED on API keys.** Sydney
   (opendata.transport.nsw.gov.au) and Melbourne (opendata.transport.vic.gov.au) both require a
   free, self-registered API key for their GTFS-Realtime feeds — registration this project can't
