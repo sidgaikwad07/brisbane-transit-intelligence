@@ -64,3 +64,18 @@ MELBOURNE_GTFS_STATIC_URL = (
     "https://opendata.transport.vic.gov.au/dataset/3f4e292e-7f8a-4ffe-831f-1953be0fe448/"
     "resource/fb152201-859f-4882-9206-b768060b50ad/download/gtfs.zip"
 )
+
+# ── ABS reference geography + population (added 2026-10-01) ──────────────
+# Used to put all three cities on the same footing: clip each feed to its
+# official Greater Capital City boundary (GCCSA), weigh service against
+# where people actually live (Australian Population Grid, 1km cells,
+# ERP at 30 June 2025), and name the gaps (SA2 boundaries). All CC BY 4.0.
+ABS_ASGS_BASE_URL = (
+    "https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3/"
+    "jul2021-jun2026/access-and-downloads/digital-boundary-files"
+)
+ABS_GCCSA_URL = f"{ABS_ASGS_BASE_URL}/GCCSA_2021_AUST_SHP_GDA2020.zip"
+ABS_SA2_URL = f"{ABS_ASGS_BASE_URL}/SA2_2021_AUST_SHP_GDA2020.zip"
+ABS_POPULATION_GRID_URL = (
+    "https://www.abs.gov.au/statistics/people/population/regional-population/2024-25/GEOTIFF.zip"
+)

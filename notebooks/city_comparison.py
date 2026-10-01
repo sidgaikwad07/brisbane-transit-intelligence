@@ -26,7 +26,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 from ingestion.config import DATABASE_URL
-from ingestion.service_calendar import active_service_ids, representative_dates
+from ingestion.service_calendar import active_service_ids, complete_schedule_end, representative_dates
 
 CHART_PATH = REPO_ROOT / "docs" / "images" / "city_comparison.png"
 REPORT_PATH = REPO_ROOT / "docs" / "city_comparison.md"
@@ -83,14 +83,29 @@ def classify_mode(route_type) -> str:
         return "Unknown"
 
 
-def city_stats(engine, schema: str) -> dict:
+def feed_calendar(engine, schema: str):
+    """calendar, calendar_dates and representative dates for one feed —
+    picked only from dates where every regular mode's timetable is
+    published (see complete_schedule_end: Sydney Trains publishes ~2
+    months less far ahead than the rest of the NSW feed)."""
     calendar = pd.read_sql(f"SELECT * FROM {schema}.calendar", engine)
     calendar_dates = pd.read_sql(f"SELECT * FROM {schema}.calendar_dates", engine)
-    trips_per_service = pd.read_sql(
-        f"SELECT service_id, count(*) AS n FROM {schema}.trips GROUP BY service_id", engine
-    ).set_index("service_id")["n"]
+    trips_per_service_type = pd.read_sql(
+        f"""
+        SELECT t.service_id, r.route_type, count(*) AS n
+        FROM {schema}.trips t JOIN {schema}.routes r ON r.route_id = t.route_id
+        GROUP BY 1, 2
+        """,
+        engine,
+    )
+    trips_per_service = trips_per_service_type.groupby("service_id")["n"].sum()
+    end = complete_schedule_end(calendar, calendar_dates, trips_per_service_type)
+    return calendar, calendar_dates, representative_dates(calendar, calendar_dates, trips_per_service, end)
 
-    weekday_date = representative_dates(calendar, calendar_dates, trips_per_service)["weekday"]
+
+def city_stats(engine, schema: str) -> dict:
+    calendar, calendar_dates, dates = feed_calendar(engine, schema)
+    weekday_date = dates["weekday"]
     service_ids = active_service_ids(calendar, calendar_dates, weekday_date)
 
     n_stops = pd.read_sql(f"SELECT count(*) AS n FROM {schema}.stops", engine).iloc[0]["n"]
@@ -261,7 +276,8 @@ def write_report(stats: dict[str, dict]) -> None:
             "Brisbane and Melbourne (both scoped tighter). Re-scoping to Sydney-metro-only "
             "agencies is a real follow-up (Phase 1b), not done here — flagging honestly rather "
             "than either silently filtering with an under-researched agency list or presenting "
-            "the inflated number unqualified."
+            "the inflated number unqualified. **Done in `docs/city_service_quality.md`**, which clips all "
+            "three feeds to their ABS Greater Capital City boundaries."
         ),
         (
             "- **Scope differs by necessity, not choice**: Brisbane's feed (SEQ) includes some "
@@ -273,6 +289,21 @@ def write_report(stats: dict[str, dict]) -> None:
             "train/tram/bus sub-feeds, excluding V/Line regional/interstate rail and coach and "
             "the SkyBus premium airport service, to keep the comparison closer to like-for-like. "
             "None of the three is a perfectly equivalent boundary."
+        ),
+        (
+            "- **Corrected 2026-10-01: Sydney's representative weekday originally had no Sydney Trains "
+            "service.** Sydney Trains only publishes its timetable about a month ahead (to 28 Oct 2026), "
+            "while the rest of the NSW feed runs to late December, so the \"typical\" date picked from the "
+            "whole span (24 Nov) had ~170 rail trips instead of ~3,200. Dates are now picked only from the "
+            "window where every regular mode's timetable is published "
+            "(`ingestion/service_calendar.complete_schedule_end`). Sydney's weekday trip total rose from "
+            "44,860 to the figure above."
+        ),
+        (
+            "- **Sydney's stop count double-counts.** The NSW feed lists most stop poles twice: once as a "
+            "boarding stop and once as a parent \"station\" record (location_type 1). Stops that actually "
+            "have departures are counted properly in `docs/city_service_quality.md` (26,813 inside "
+            "Greater Sydney on a weekday, vs 18,668 Melbourne and 9,855 Brisbane)."
         ),
         (
             "- **Mode classification uses extended GTFS route_type codes** where a feed uses them "
