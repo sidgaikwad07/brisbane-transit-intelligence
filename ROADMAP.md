@@ -116,9 +116,10 @@ quick published-stats comparison) — a multi-phase effort, tracked here.
   Updates (mirroring `ingestion/gtfs_realtime_poller.py`), a multi-week collection window (Brisbane
   itself needed ~10 days before its own OTP numbers were trustworthy — expect similarly for these),
   then a real on-time-performance / headway comparison across all three cities.
-- [ ] **Phase 3 — turn the comparison into recommendations.** Once Phase 2 has enough real data,
-  fold city-comparison findings into `docs/recommendations.md` alongside the existing
-  Brisbane-only findings.
+- [x] **Phase 3 — turn the comparison into recommendations (static part done 2026-10-02).**
+  `docs/recommendations.md` section C (#12-16): frequent-service coverage target benchmarked to
+  Melbourne/Sydney, three named growth corridors, evening standard, weekend approach, routine
+  peer benchmarking. A live-reliability comparison would be added here if Phase 2 ever runs.
 
 ## Explicitly out of scope (for this version)
 Airflow, dbt Cloud, cloud data warehouse, live public hosting, demand
