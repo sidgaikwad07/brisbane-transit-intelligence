@@ -17,7 +17,7 @@ def test_find_problems_flags_only_stale_sources():
     }
     problems = find_problems(latest, NOW)
     assert set(problems) == {"Vehicle positions", "Traffic"}
-    assert problems["Traffic"] == "no data at all"
+    assert problems["Traffic"] == "no data in the last 24 h"
 
 
 def test_new_problem_notifies_once_then_waits_for_reminder():

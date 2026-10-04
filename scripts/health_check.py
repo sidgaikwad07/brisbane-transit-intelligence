@@ -61,10 +61,21 @@ SOURCES = [
 ]
 
 
+LOOKBACK = timedelta(days=1)
+
+
 def latest_timestamps(engine) -> dict[str, datetime | None]:
+    """Newest row per source within LOOKBACK. Bounded so the BRIN index on
+    each timestamp column (db/schema.sql) skips old blocks — an unbounded
+    max() scanned all ~100M trip_updates rows (~11s, growing daily). Nothing
+    in the last day reads as "no data at all", which is stale either way."""
     with engine.connect() as conn:
         return {
-            s.name: conn.execute(text(f"SELECT max({s.time_column}) FROM {s.table}")).scalar() for s in SOURCES
+            s.name: conn.execute(
+                text(f"SELECT max({s.time_column}) FROM {s.table} WHERE {s.time_column} > :since"),
+                {"since": datetime.now(tz=timezone.utc) - LOOKBACK},
+            ).scalar()
+            for s in SOURCES
         }
 
 
@@ -74,7 +85,7 @@ def find_problems(latest: dict[str, datetime | None], now: datetime) -> dict[str
     for s in SOURCES:
         last = latest.get(s.name)
         if last is None:
-            problems[s.name] = "no data at all"
+            problems[s.name] = f"no data in the last {LOOKBACK.days * 24} h"
         elif now - last > s.max_age:
             problems[s.name] = f"no new data for {_age(now - last)}"
     return problems

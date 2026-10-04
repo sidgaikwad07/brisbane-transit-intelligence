@@ -119,6 +119,9 @@ CREATE TABLE IF NOT EXISTS raw.vehicle_positions (
 );
 CREATE INDEX IF NOT EXISTS idx_vp_trip ON raw.vehicle_positions (trip_id, polled_at);
 CREATE INDEX IF NOT EXISTS idx_vp_route ON raw.vehicle_positions (route_id, polled_at);
+-- BRIN: tiny, and ideal for an append-only timestamp. Lets "newest rows"
+-- lookups (scripts/health_check.py) skip old blocks instead of scanning all.
+CREATE INDEX IF NOT EXISTS idx_vp_polled_brin ON raw.vehicle_positions USING BRIN (polled_at);
 
 CREATE TABLE IF NOT EXISTS raw.trip_updates (
     id                  BIGSERIAL PRIMARY KEY,
@@ -134,6 +137,7 @@ CREATE TABLE IF NOT EXISTS raw.trip_updates (
 );
 CREATE INDEX IF NOT EXISTS idx_tu_trip ON raw.trip_updates (trip_id, polled_at);
 CREATE INDEX IF NOT EXISTS idx_tu_route ON raw.trip_updates (route_id, polled_at);
+CREATE INDEX IF NOT EXISTS idx_tu_polled_brin ON raw.trip_updates USING BRIN (polled_at);
 
 CREATE TABLE IF NOT EXISTS raw.service_alerts (
     id           BIGSERIAL PRIMARY KEY,
@@ -173,6 +177,8 @@ CREATE INDEX IF NOT EXISTS idx_intersection_traffic_recorded_at
     ON raw.intersection_traffic (recorded_at);
 CREATE INDEX IF NOT EXISTS idx_intersection_traffic_tsc
     ON raw.intersection_traffic (tsc);
+CREATE INDEX IF NOT EXISTS idx_intersection_traffic_fetched_brin
+    ON raw.intersection_traffic USING BRIN (fetched_at);
 
 -- BCC's traffic-signal-controller locations (a separate, static dataset from
 -- the rolling traffic readings above) — needed because raw.intersection_traffic
