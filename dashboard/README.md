@@ -1,4 +1,4 @@
-# Streamlit dashboard — added Week 4
+# Streamlit dashboard (added in Week 4)
 
-Network health overview, worst-performing routes/stops, and delay-model
-predictions, run locally with `streamlit run dashboard/app.py`.
+Shows network health, the worst-performing routes and stops, and delay-model predictions.
+Run it locally with `streamlit run dashboard/app.py`.

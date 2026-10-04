@@ -1,5 +1,6 @@
-# ML models — added Week 3
+# ML models (added in Week 3)
 
-Delay-prediction model (XGBoost) trained on dbt mart output joined against
-BCC intersection traffic and daily weather. Feature engineering and training
-scripts land here once Week 2's realtime data has accumulated enough history.
+The delay-prediction model (XGBoost) is trained on the dbt mart output, joined with BCC
+intersection traffic and daily weather. `build_features.py` builds the training table and
+`train_delay_model.py` trains and evaluates it, writing the results to
+`docs/delay_model_card.md`.
