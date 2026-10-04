@@ -73,6 +73,17 @@ not just code — the goal is a working artifact at every checkpoint.
 - [x] Streamlit dashboard (`dashboard/app.py`, pulled forward) — network health, live delay view,
   worst routes/bunching, demand-vs-reliability, traffic & weather. Model predictions tab pending
   the delay-prediction model (still not built — see Week 3 above)
+- [x] **Automation (added 2026-10-04):** `scripts/health_check.py` (every 15 min — macOS
+  notification when any live table stops receiving rows or the DB is down) and
+  `scripts/weekly_refresh.py` (Mondays 06:00 — reload all static data, regenerate everything in a
+  separate worktree, open a PR for review); both installed via `scripts/install_automation.sh`.
+  `refresh_all.py` now also covers the weekend-gap, city-comparison and delay-model scripts.
+  **Found while building it:** the BCC traffic poller had been hitting the portal's 5,000
+  calls/day anonymous limit (~150 paged calls per poll) and was locked out for most of every
+  day — only 2-14 hours of traffic data per day since collection began, mostly missing the
+  morning peak. Fixed with a single bulk-export call per poll (~720/day) and sleeping until the
+  quota resets if it's ever hit. The Week 3 delay model was trained on that patchy data, so its
+  traffic-feature results need re-checking once a full-day window exists.
 - [ ] README pass, architecture diagram finalized
 - [ ] Screen-recorded demo (GIF/video) for LinkedIn
 - [ ] Write-up: what the data showed, one or two concrete, specific findings about Brisbane's network
