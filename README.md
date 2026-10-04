@@ -1,30 +1,28 @@
 # Brisbane Transit Intelligence
 
-A data engineering + ML project that turns Brisbane's public transport open data
-(GTFS static + GTFS-Realtime, Council traffic sensors, weather) into a working
-pipeline that measures network reliability, predicts delays, and surfaces where
+I built this to see how far Brisbane's public transport open data could go. It pulls the GTFS
+timetable, the live GTFS-Realtime feed, Brisbane City Council's traffic sensors and daily
+weather into one pipeline that measures reliability, tries to predict delays, and shows where
 the network is under strain.
 
-Built as a portfolio project — the emphasis is on a real, reproducible pipeline
-over a large feature set: local Postgres/PostGIS, scheduled ingestion, dbt
-transformations, a trained delay-prediction model, and a dashboard, all runnable
-with `docker compose up`.
+It's a portfolio project, so I cared more about a pipeline that actually runs end to end than
+about piling on features. Everything is local: Postgres with PostGIS, scheduled ingestion, dbt
+models, an XGBoost delay model and a Streamlit dashboard, all started with
+`docker compose up`.
 
 ## Why this project
 
-Brisbane's transit agency (Translink) and Brisbane City Council publish open,
-unauthenticated data feeds — a static GTFS schedule, a live GTFS-Realtime feed
-(vehicle positions + trip updates + service alerts), and live traffic sensor
-data at signalised intersections. This project ingests all three, models them
-together, and asks a concrete question:
+Translink and Brisbane City Council both publish open feeds with no login required: a static
+GTFS timetable, a live GTFS-Realtime feed (vehicle positions, trip updates and service alerts),
+and live traffic readings from signalised intersections. I wanted to put all three together
+and answer one question:
 
-> **Where and when does Brisbane's bus network become unreliable, and how much
-> of that is explained by road congestion vs. schedule design?**
+> **Where and when does Brisbane's bus network become unreliable, and how much of that comes
+> from road congestion versus the way the timetable is designed?**
 
 ## Status
 
-This is under active development. See [`ROADMAP.md`](ROADMAP.md) for the
-build plan and current progress.
+Still being built. [`ROADMAP.md`](ROADMAP.md) has the plan and what's done so far.
 
 ## Architecture
 
@@ -101,10 +99,10 @@ python models/train_delay_model.py        # trains + evaluates -> docs/delay_mod
 
 ### Running the poller as a background service (macOS)
 
-The poller needs to run for hours/days to collect anything meaningful, which makes "leave a
-terminal open with Ctrl+C to stop" impractical. `scripts/install_poller_service.sh` installs it as
-a macOS LaunchAgent instead — starts on login, restarts automatically if it ever crashes (tested:
-`kill -KILL` on the process, back up and polling within ~20s):
+The poller has to run for hours or days before it collects anything useful, and leaving a
+terminal open isn't practical. `scripts/install_poller_service.sh` installs it as a macOS
+LaunchAgent instead. It starts on login and restarts itself if it crashes. I tested this by
+killing the process with `kill -KILL`, and it was back up and polling within about 20 seconds.
 
 ```bash
 scripts/install_poller_service.sh     # install + start
@@ -113,15 +111,15 @@ tail -f logs/poller.log                 # watch it poll
 scripts/uninstall_poller_service.sh   # stop + remove
 ```
 
-This doesn't fix the one real failure mode that's actually hit collection (the machine going to
-sleep — no software fixes that), it just means nobody has to notice and manually restart the
-process afterward. The plist is generated from
-[`scripts/poller_service/com.brisbane-transit.poller.plist.template`](scripts/poller_service/com.brisbane-transit.poller.plist.template),
-not committed with machine-specific paths baked in.
+It can't do anything about the laptop going to sleep, which is the main thing that has
+interrupted collection so far. It just means nobody has to notice and restart it by hand
+afterwards. The plist is generated from
+[`scripts/poller_service/com.brisbane-transit.poller.plist.template`](scripts/poller_service/com.brisbane-transit.poller.plist.template)
+so no machine-specific paths get committed.
 
-The BCC traffic feed needs the same treatment — its API is a rolling ~5-minute window with no
-historical archive, so, like GTFS-RT, the only way to build a time series is to poll continuously
-starting now:
+The BCC traffic feed needs the same setup. Its API only ever shows the last five minutes or so
+and keeps no history, so as with GTFS-RT the only way to build up a time series is to keep
+polling:
 
 ```bash
 scripts/install_traffic_poller_service.sh     # install + start
@@ -129,27 +127,28 @@ tail -f logs/traffic_poller.log                 # watch it poll
 scripts/uninstall_traffic_poller_service.sh   # stop + remove
 ```
 
-Weather is the opposite case — Open-Meteo's archive endpoint has real history back to 1940, so
-`python -m ingestion.weather` just backfills the whole window in one run and is safe to re-run
-any time to catch up (it upserts by date, no duplication).
+Weather works the other way round. Open-Meteo's archive goes back to 1940, so
+`python -m ingestion.weather` backfills the whole window in one go. It upserts by date, so
+you can re-run it whenever you like without creating duplicates.
 
 ### Regenerating everything
 
-Once the poller's been running a while and `od_trips` is loaded, one command regenerates every
-finding/chart/export in this repo from current data:
+Once the poller has been running for a while and `od_trips` is loaded, one command rebuilds
+every finding, chart and export in the repo from the current data:
 
 ```bash
 make refresh          # dbt run once, then every analysis + model script, then the CSV/XLSX exports
 make refresh-fast     # same, minus the slow exports
 ```
 
-See [`scripts/refresh_all.py`](scripts/refresh_all.py) for what actually runs and in what order —
-it replaced what had become a manual, easy-to-get-wrong ritual of invoking six-plus scripts by
-hand. On its own it only regenerates local files; the weekly job below is what publishes them.
+[`scripts/refresh_all.py`](scripts/refresh_all.py) shows exactly what runs and in what order.
+I wrote it after running six-plus scripts by hand in the right order became too easy to get
+wrong. On its own it only updates local files. The weekly job below is what publishes them.
 
 ### Automation: health check + weekly refresh
 
-Two scheduled jobs (macOS LaunchAgents) keep the project current without anyone remembering to:
+Two scheduled jobs (macOS LaunchAgents) keep things up to date without anyone having to
+remember:
 
 ```bash
 make install-automation   # install both (needs `gh auth login` done once)
@@ -160,165 +159,177 @@ scripts/uninstall_automation.sh
 
 | Job | When | What it does |
 |---|---|---|
-| [`scripts/health_check.py`](scripts/health_check.py) | Every 15 min | Checks the newest row in each live table; a macOS notification if one goes quiet (transit > 15 min, traffic > 30 min) or the database is down, a reminder every 6h, and one when it recovers |
-| [`scripts/weekly_refresh.py`](scripts/weekly_refresh.py) | Mondays 06:00 | Reloads Brisbane/Sydney/Melbourne timetables + OD ridership, runs `refresh_all.py`, and opens a **pull request** with the regenerated docs for review |
+| [`scripts/health_check.py`](scripts/health_check.py) | Every 15 min | Checks the newest row in each live table. Sends a macOS notification if one goes quiet (transit > 15 min, traffic > 30 min) or the database is down, a reminder every 6h, and another when it recovers |
+| [`scripts/weekly_refresh.py`](scripts/weekly_refresh.py) | Mondays 06:00 | Reloads the Brisbane, Sydney and Melbourne timetables plus OD ridership, runs `refresh_all.py`, and opens a pull request with the regenerated docs for review |
 
-Why each exists:
+Why each one exists:
 
-- **Health check:** on 3 Oct 2026 the traffic poller was "running" but locked out by the BCC
-  portal's daily limit (5,000 anonymous calls/day) and lost ~16 hours of data that can never be
-  recovered. launchd's `KeepAlive` only catches crashes; checking that new rows are actually
-  landing catches everything. (The poller itself now uses one bulk-export call per poll, ~720/day,
-  and sleeps until the quota resets if it's ever hit.)
-- **Weekly refresh:** live tables update themselves, but static data goes stale silently. Sydney
-  Trains publishes only about a month ahead, so without a reload the city comparison would lose
-  Sydney's rail network within weeks.
+- **Health check.** On 3 Oct 2026 the traffic poller looked fine but had been locked out by
+  the BCC portal's daily limit (5,000 anonymous calls a day). It lost about 16 hours of data
+  that can't be recovered. launchd's `KeepAlive` only notices crashes, so checking that new
+  rows are actually arriving is the only reliable test. The poller itself now makes one
+  bulk-export call per poll (about 720 a day) and sleeps until the quota resets if it ever
+  runs out.
+- **Weekly refresh.** The live tables keep themselves current, but the static data quietly
+  goes out of date. Sydney Trains only publishes its timetable about a month ahead, so
+  without a reload the city comparison would lose Sydney's rail network within weeks.
 
-The weekly job never touches your working copy (it runs in a separate git worktree under
-`.worktrees/`), commits only `docs/`, and never pushes to `main`. If a static load fails it stops
-before analysing a half-loaded timetable; if an analysis script fails the PR opens as a draft
-listing what failed. Logs: `logs/health_check.log`, `logs/weekly_refresh.log`.
+The weekly job works in a separate git worktree under `.worktrees/`, so it never touches your
+working copy. It only commits `docs/` and never pushes to `main`. If a static load fails it
+stops before analysing a half-loaded timetable, and if an analysis script fails the pull
+request opens as a draft that lists what went wrong. Logs are in `logs/health_check.log` and
+`logs/weekly_refresh.log`.
 
 ## Week 1 findings
 
-Full breakdown in [`docs/week1_findings.md`](docs/week1_findings.md), generated by
-[`notebooks/network_summary.py`](notebooks/network_summary.py) against the loaded
-GTFS static data, resolved to one representative weekday (see
-[`ingestion/service_calendar.py`](ingestion/service_calendar.py) — the feed republishes
-overlapping calendar windows, so a naive `calendar.monday = true` filter overstates trip
-counts several-fold). Headline numbers: 12,768 stops with scheduled service, 494 routes,
-20,853 scheduled trips (18,926 of them bus).
+The full breakdown is in [`docs/week1_findings.md`](docs/week1_findings.md), generated by
+[`notebooks/network_summary.py`](notebooks/network_summary.py) from the static timetable for one
+representative weekday. That last part matters. The feed republishes overlapping calendar
+windows, so simply filtering on `calendar.monday = true` overstates trip counts several times
+over ([`ingestion/service_calendar.py`](ingestion/service_calendar.py) explains how I resolve
+it). Headline numbers: 12,768 stops with scheduled service, 494 routes and 20,853 scheduled
+trips, 18,926 of them by bus.
 
-[![SEQ transit network — route shapes by mode, with the Manly/Lota service gap flagged in orange](docs/images/network_map.png)](docs/manly_lota_service_gap.md)
-*Click the map for the Manly/Lota weekend service-gap case study (flagged in orange, bayside east of the CBD).*
+[![SEQ transit network: route shapes by mode, with the Manly/Lota service gap flagged in orange](docs/images/network_map.png)](docs/manly_lota_service_gap.md)
+*Click the map for the Manly/Lota weekend service gap case study (flagged in orange, on the bayside east of the CBD).*
 
-The busiest interchanges by distinct routes served are the South East Busway
-stations — Buranda (47 routes), Griffith University (40), Upper Mt Gravatt (32),
-and Roma Street (31, alongside Cultural Centre, the single busiest stop overall
-by trip volume).
+The busiest interchanges by number of routes are the South East Busway stations: Buranda (47
+routes), Griffith University (40), Upper Mt Gravatt (32) and Roma Street (31). Cultural Centre
+is the single busiest stop by trip volume.
 
 ## Case study: the Manly / Lota / Cleveland service gap
 
 [`docs/manly_lota_service_gap.md`](docs/manly_lota_service_gap.md), generated by
-[`notebooks/manly_lota_service_gap.py`](notebooks/manly_lota_service_gap.py), turns a
-resident's two complaints — buses too infrequent, route feels too long — into three
-measured claims. The Cleveland Line at Manly runs every ~15 minutes at weekday peak but a
-flat 30 minutes all day, every day, on weekends, and the local bus corridor drops to a bus
-every 90 minutes on Sunday mornings — but checked against every comparably busy stop
-citywide, that gap isn't unique to Manly/Lota, it's a citywide pattern. Route circuity
-(path length vs. straight-line distance) tells the same story: real, but not
-corridor-specific — Brisbane's bus network runs circuitous almost everywhere. The one
-finding that **is** corridor-specific: real ridership data (Queensland Government OD
-trips) shows the corridor's two main routes, **220 and 227, sit at the 93rd-95th
-percentile of demand pressure citywide** — roughly 2.5x the network median riders per
-scheduled trip — a genuine, targeted case for more weekday peak capacity on those two
-routes specifically, distinct from the citywide weekend-frequency conversation.
+[`notebooks/manly_lota_service_gap.py`](notebooks/manly_lota_service_gap.py), started with a
+resident's two complaints: the buses don't come often enough, and the route takes too long. I
+turned those into three things I could measure.
 
-## Week 2 findings — on-time performance & bunching
+The Cleveland line at Manly runs about every 15 minutes in the weekday peak, but at weekends
+it's a flat 30 minutes all day. The local bus corridor drops to one bus every 90 minutes on
+Sunday mornings. When I compared it with every similarly busy stop in the city, though, the
+gap wasn't specific to Manly or Lota. It's the same pattern citywide. Route circuity (how long
+the route is compared with a straight line) told the same story: the buses here do take long
+routes, but so do Brisbane buses almost everywhere.
 
-Full breakdown in [`docs/week2_findings.md`](docs/week2_findings.md), generated by
-[`notebooks/realtime_summary.py`](notebooks/realtime_summary.py) from
-[`ingestion/gtfs_realtime_poller.py`](ingestion/gtfs_realtime_poller.py)'s own polled
-GTFS-Realtime data — not Translink's official on-time stat — via dbt marts in
-[`dbt/`](dbt/). From a growing multi-day collection window spanning both weekend and weekday
-service: **~69% on-time citywide**, with rail and the Gold Coast light rail running far more
-reliably than bus or ferry. Route rankings require ≥5 distinct trips before counting, so one
-catastrophically delayed run can't make a low-frequency route look systemically unreliable.
-Raw and summarized data is exportable to CSV/XLSX via
+One finding really is specific to this corridor. Queensland Government ridership data shows
+its two main routes, **220 and 227, sit at the 93rd to 95th percentile of demand pressure
+citywide**, about 2.5 times the network median in riders per scheduled trip. That's a clear
+case for more weekday peak capacity on those two routes, and it's a separate issue from
+weekend frequency across the city.
+
+## Week 2 findings: on-time performance and bunching
+
+The full breakdown is in [`docs/week2_findings.md`](docs/week2_findings.md), generated by
+[`notebooks/realtime_summary.py`](notebooks/realtime_summary.py) through the dbt marts in
+[`dbt/`](dbt/). It's my own measurement from the GTFS-Realtime data collected by
+[`ingestion/gtfs_realtime_poller.py`](ingestion/gtfs_realtime_poller.py), not Translink's
+official on-time figure. Over a collection window of several days that covers both weekday
+and weekend service, about **69% of stop visits are on time** citywide. Rail and the Gold Coast
+light rail are far more reliable than buses or ferries. A route needs at least 5 distinct
+trips before it's ranked, so one badly delayed run can't make a quiet route look unreliable
+across the board. The raw and summarised data can be exported to CSV or XLSX with
 [`notebooks/export_week2_data.py`](notebooks/export_week2_data.py).
 
 ![On-time performance by mode](docs/images/week2_on_time_by_mode.png)
 
-### Why weekday/weekend on-time performance look so close
+### Why weekday and weekend on-time performance look so close
 
-A fair question this project got asked directly: weekday and weekend on-time performance are only
-a few points apart — if weekend service is really worse, why doesn't that number show it? Full
-answer in [`docs/weekend_frequency_gap.md`](docs/weekend_frequency_gap.md), generated by
-[`notebooks/weekend_frequency_gap.py`](notebooks/weekend_frequency_gap.py): **on-time performance
-only measures the trips that run, not how many exist.** 149 routes (carrying 7.4% of all weekday
-ridership) have zero Saturday service; 181 routes (9.5%) have zero Sunday service — that's the
-real weekend gap, and it's invisible to OTP by construction. Among the routes that *do* survive
-onto the weekend timetable, headway holds up surprisingly close to weekday. Caught and fixed a
-real bug building this: an early version merged Saturday's and Sunday's trips into one calculation
-before computing headway, which double-counted both days into a single day's span and understated
-weekend headway by roughly 2x.
+Someone asked me this directly: weekday and weekend on-time performance are only a few points
+apart, so if weekend service really is worse, why doesn't the number show it? The answer is in
+[`docs/weekend_frequency_gap.md`](docs/weekend_frequency_gap.md), generated by
+[`notebooks/weekend_frequency_gap.py`](notebooks/weekend_frequency_gap.py). **On-time
+performance only measures the trips that run. It says nothing about how many trips exist.**
+149 routes, carrying 7.4% of all weekday ridership, have no Saturday service at all, and 181
+routes (9.5%) have no Sunday service. That's the actual weekend gap, and an on-time figure
+can't show it. The routes that do keep running at weekends hold their frequency surprisingly
+close to weekdays.
+
+I also caught a bug while building this. An early version combined Saturday's and Sunday's
+trips before calculating headway, which squeezed two days of trips into one day's span and
+made weekend headways look about half as long as they are.
 
 ![The weekday/weekend gap on-time performance alone doesn't show](docs/images/weekend_frequency_gap.png)
 
-## Demand intelligence — real ridership, not a schedule proxy
+## Demand intelligence: actual ridership
 
-Full breakdown in [`docs/demand_intelligence_findings.md`](docs/demand_intelligence_findings.md),
-generated by [`notebooks/demand_intelligence.py`](notebooks/demand_intelligence.py) from
-[`ingestion/od_trips.py`](ingestion/od_trips.py), which loads Queensland Government's monthly
-aggregated go card/EMV/paper-ticket
+The full breakdown is in
+[`docs/demand_intelligence_findings.md`](docs/demand_intelligence_findings.md), generated by
+[`notebooks/demand_intelligence.py`](notebooks/demand_intelligence.py). The data comes from
+[`ingestion/od_trips.py`](ingestion/od_trips.py), which loads the Queensland Government's
+monthly
 [origin-destination trip data](https://www.data.qld.gov.au/dataset/translink-origin-destination-trips-2022-onwards)
-(CC BY 4.0) — genuine ridership counts, not a delay/frequency proxy for demand. From three months
-(May-Jul 2026, 55.2M trips): the busiest route by real ridership is the M2 (21,776 riders/day),
-and joining actual ridership against scheduled trips (same representative-weekday method as Week 1)
-produces a number nothing else here could: **riders per scheduled trip** — F1 CityCat carries ~115
-riders per sailing despite modest frequency, versus e.g. route 700 at ~27 despite running far more
-often. That's a genuine demand-pressure signal for where capacity is short, not just where the
-timetable is dense. Also exportable to CSV/XLSX via
+(CC BY 4.0), covering go card, EMV and paper tickets. These are actual passenger counts, so I
+didn't have to infer demand from delays or frequency.
+
+Across three months (May to July 2026, 55.2M trips) the busiest route is the M2, with 21,776
+riders a day. Joining ridership against scheduled trips, using the same representative-weekday
+method as Week 1, gives **riders per scheduled trip**. The F1 CityCat carries about 115 riders
+per sailing even though it isn't especially frequent, while route 700 carries about 27 despite
+running far more often. That tells you where capacity is short, which a busy timetable on its
+own doesn't. This data can also be exported to CSV or XLSX with
 [`notebooks/export_demand_data.py`](notebooks/export_demand_data.py).
 
 ![Busiest routes by real ridership](docs/images/demand_vs_supply.png)
 
-## Priority routes — where demand and unreliability overlap
+## Priority routes: where demand and unreliability overlap
 
-Full breakdown in [`docs/priority_routes_findings.md`](docs/priority_routes_findings.md), generated
-by [`notebooks/priority_routes.py`](notebooks/priority_routes.py) — the synthesis every other finding
-here stopped short of: real ridership crossed with measured on-time performance, since a route
-that's both heavily used *and* unreliable affects far more riders per late arrival than either
-problem alone. **SMBI** (the Southern Moreton Bay Islands ferry) tops the list — 5,208 riders/weekday
-at the 100th percentile of demand, running on-time only 38% of the time (2nd percentile reliability
-citywide). Routes 220 and 227 from the Manly/Lota/Cleveland case study independently show up in this
-citywide top 15 too, confirming that case study's finding holds beyond just that corridor.
+The full breakdown is in [`docs/priority_routes_findings.md`](docs/priority_routes_findings.md),
+generated by [`notebooks/priority_routes.py`](notebooks/priority_routes.py). It brings ridership
+and on-time performance together, because a route that's both busy and unreliable makes far
+more people late than either problem on its own.
+
+**SMBI**, the Southern Moreton Bay Islands ferry, comes out on top. It carries 5,208 riders a
+weekday, the 100th percentile for demand, and runs on time only 38% of the time, which puts it
+at the 2nd percentile for reliability citywide. Routes 220 and 227 from the Manly/Lota/Cleveland
+case study also turn up in the citywide top 15, which backs up what that case study found.
 
 ![Where should Translink act first?](docs/images/priority_routes.png)
 
-## Delay-prediction model (Week 3) — and a real negative result
+## Delay-prediction model (Week 3), and why it doesn't work yet
 
-Full write-up in [`docs/delay_model_card.md`](docs/delay_model_card.md). Two XGBoost models
-(regression on delay seconds, classification on ">5min late") trained on real polled delay
-observations, spatially joined to BCC intersection traffic — `ingestion/traffic_signal_locations.py`
-pulls BCC's separate signal-location dataset (the rolling traffic feed has no lat/lon of its own,
-only a signal-controller id) so `models/build_features.py` can do a genuine PostGIS `ST_DWithin`
-join — plus daily weather and a system-wide disruption-alert count.
+The full write-up is in [`docs/delay_model_card.md`](docs/delay_model_card.md). There are two
+XGBoost models, one predicting delay in seconds and one predicting whether an arrival will be
+more than 5 minutes late. Both are trained on polled delay observations joined to BCC
+intersection traffic, daily weather and a count of active system-wide disruption alerts. The
+traffic feed has no coordinates of its own, only a signal-controller ID, so
+`ingestion/traffic_signal_locations.py` pulls BCC's separate signal-location dataset. That
+lets `models/build_features.py` match each stop to nearby signals with a PostGIS `ST_DWithin`
+join.
 
-**The honest result:** on a real time-based train/test split (the only fair way to evaluate this),
-the model currently **loses to a naive baseline**. That's diagnosable, not a bug: the ~3.5-day
-collection window contains one clear reliability regime shift — a strike-caused disruption made
-25-26 Sep much less reliable than 27-28 Sep — and a few days of data isn't enough for a model to
-learn to generalize across that shift. A diagnostic random-split run (same features, deliberately
-leaking time information a real deployment wouldn't have) confirms the features *do* carry real
-signal — regressor MAE beats baseline (217s vs. 242s) and the classifier beats baseline too — so
-this points at needing more days of data spanning multiple disruption cycles, not a broken feature
-set. Published as-is because a negative result honestly explained is worth more than a cherry-picked
-split that hides it.
+**The result:** on a time-based train/test split, which is the only fair way to evaluate this,
+the model currently **does worse than a naive baseline**. There's a clear reason. The
+collection window was only about 3.5 days and included a strike, which made 25 and 26 Sep much
+less reliable than 27 and 28 Sep. A few days of data isn't enough for a model to learn across
+a shift like that. To check that the features carry any signal at all, I also ran a random
+split (same features, but it leaks timing information a real deployment wouldn't have). There
+the regressor beats the baseline, 217s MAE against 242s, and so does the classifier. So the
+problem is too little data, spanning too few disruptions, rather than bad features. I've
+published the result as it stands because a negative result with a clear explanation is more
+useful than a hand-picked split that hides it.
 
 ![Feature importance](docs/images/delay_model_feature_importance.png)
 
-## City comparison — Brisbane vs. Sydney vs. Melbourne
+## City comparison: Brisbane vs. Sydney vs. Melbourne
 
-Full write-up in [`docs/city_comparison.md`](docs/city_comparison.md). Real static-GTFS data for
-all three, loaded into isolated schemas (`raw_syd`, `raw_mel`, cloned from `raw` via
-[`scripts/setup_city_schema.py`](scripts/setup_city_schema.py) — Brisbane's own tables are
-untouched) and compared with the same representative-weekday methodology as every other finding
-here, not quoted from a published report.
+The full write-up is in [`docs/city_comparison.md`](docs/city_comparison.md). I loaded the
+static GTFS feeds for Sydney and Melbourne into their own schemas (`raw_syd` and `raw_mel`,
+cloned from `raw` by [`scripts/setup_city_schema.py`](scripts/setup_city_schema.py)), so
+Brisbane's tables aren't touched. All three are compared with the same representative-weekday
+method as everything else here. None of the figures are taken from published reports.
 
 ![Network scale comparison](docs/images/city_comparison.png)
 
-Two real data-quality findings surfaced while building this, both documented rather than quietly
-patched: Sydney's published "Greater Sydney" feed is actually **statewide** (689 agencies, 45% of
-stops fall outside a generous Sydney-metro bounding box), and 88% of its raw route count turned
-out to be dedicated school-bus service (route_type 712, identified by literally reading route
-names — "X to \<School Name\>") that had to be found and excluded before the comparison meant
-anything. See the doc's caveats for the full detail.
+Building it turned up two data-quality problems, and I've written both up rather than quietly
+patching around them. Sydney's "Greater Sydney" feed actually covers the whole state (689
+agencies, with 45% of stops outside a generous Sydney metro bounding box). And 88% of its
+routes turned out to be dedicated school buses (route_type 712), which I only spotted by
+reading the route names ("X to \<School Name\>"). They had to be excluded before the
+comparison meant anything. The doc's caveats section has the details.
 
-**This is a static-schedule comparison only** — network size and mode mix, not measured
-reliability. Sydney and Melbourne's GTFS-Realtime feeds (needed for an on-time-performance
-comparison, the more interesting question) require a free API key this project doesn't have —
-see `ROADMAP.md`'s "City comparison" section for exactly what's blocked and what unblocks it.
+**This only compares timetables:** network size and mode mix, not measured reliability. The
+more interesting comparison, on-time performance, needs Sydney's and Melbourne's GTFS-Realtime
+feeds, and both require a free API key this project doesn't have. The "City comparison"
+section of `ROADMAP.md` explains exactly what's blocked and what would unblock it.
 
 ## Project layout
 
@@ -338,74 +349,73 @@ docs/          Architecture notes, findings write-ups
 streamlit run dashboard/app.py
 ```
 
-[`dashboard/app.py`](dashboard/app.py) queries Postgres directly — the same dbt marts and raw
-tables every static report above is built from — so it's never more than a poller interval or two
-stale, not a recomputed-on-a-schedule export. A hero banner computes and states the single most
-actionable live fact on every load (e.g. which hour of day is currently least reliable and by how
-much), and every chart carries a short auto-generated insight callout alongside it rather than
-leaving the reader to interpret it cold. Six tabs:
+[`dashboard/app.py`](dashboard/app.py) queries Postgres directly, using the same dbt marts and
+raw tables as the reports above, so it's never more than a poll or two behind. A banner at the
+top works out the most useful live fact each time it loads, such as which hour of the day is
+currently least reliable and by how much. Each chart also comes with a short generated note
+explaining what it shows. There are six tabs:
 
-- **🗺️ Live map** — every tracked vehicle's current position, colored by live delay status
-  (carto-darkmatter basemap, no API key needed); toggle to a citywide delay-hotspot view showing
-  every stop's average arrival delay
-- **🔴 Live delays** — rolling 15-minute arrival-delay distribution, which routes are late right
-  now, and an on-time-% by hour-of-day chart showing the diurnal reliability pattern
-- **📊 Worst routes & bunching** — least reliable routes (full early/on-time/late composition, not
-  just one number) and most-bunched routes, from the marts behind
-  [Week 2 findings](docs/week2_findings.md)
-- **📈 Ridership trends** — real monthly ridership by mode, ridership by time-of-day block (a fair
-  avg-trips-per-day comparison, not a raw sum, since weekday blocks cover 5 days and weekend covers
-  2), the busiest stations network-wide by actual trip volume, and a day-of-week × hour heatmap of
-  scheduled stop-visit density. Building the mode breakdown surfaced a real gap in the existing
-  demand marts: the OD dataset identifies heavy rail and the Gold Coast light rail by their own
-  literal codes ("Rail", "GCLR") rather than a GTFS route number, so the existing route-name join
-  silently dropped ~36% of all real ridership — reclassified explicitly for this chart, noted as a
-  fix-upstream candidate for the other demand marts
-- **🎯 Demand vs reliability** — the [priority routes](docs/priority_routes_findings.md) scatter
-  and a top-10 bar chart, live
-- **🚦 Traffic & weather** — BCC intersection congestion trend and current saturation distribution,
-  plus recent Brisbane weather — the Week 3 inputs feeding the delay-prediction model once it's built
+- **Live map:** every tracked vehicle's current position, coloured by how late it is, on a
+  carto-darkmatter basemap that doesn't need an API key. You can switch to a citywide view of
+  delay hotspots showing the average arrival delay at every stop.
+- **Live delays:** the spread of arrival delays over the last 15 minutes, which routes are
+  running late right now, and on-time percentage by hour of the day.
+- **Worst routes & bunching:** the least reliable routes, with the full early/on-time/late
+  breakdown rather than a single number, plus the most bunched routes, from the marts behind
+  the [Week 2 findings](docs/week2_findings.md).
+- **Ridership trends:** monthly ridership by mode, ridership by time of day, the busiest
+  stations by actual trip volume, and a day-of-week by hour heatmap of scheduled stop visits.
+  Time-of-day blocks are compared as average trips per day rather than raw totals, since
+  weekday blocks cover five days and weekend blocks two. Building the mode breakdown exposed a
+  gap in the demand marts. The OD dataset labels heavy rail and the Gold Coast light rail with
+  their own codes ("Rail", "GCLR") instead of GTFS route numbers, so the route-name join was
+  silently dropping about 36% of all ridership. This chart reclassifies them explicitly, and
+  fixing it at the source in the other demand marts is still on the list.
+- **Demand vs reliability:** the [priority routes](docs/priority_routes_findings.md) scatter
+  plot and a top-10 bar chart, updated live.
+- **Traffic & weather:** the BCC intersection congestion trend, current saturation levels and
+  recent Brisbane weather. These are the Week 3 inputs to the delay model.
 
-Right under the KPI row, an expandable **🚨 active service alerts** panel lists every disruption
-live in the most recent GTFS-RT Service Alerts poll — the same feed behind the alert banners on
-Translink's own journey planner (e.g. "Reduced train timetables", "Weekend track closure"), except
-polled continuously into `raw.service_alerts` since Week 2 rather than read one page at a time.
-That table had been silently accumulating for over a week before anything in this repo read it.
+Just below the KPI row, an expandable **active service alerts** panel lists every disruption in
+the latest GTFS-RT Service Alerts poll. It's the same feed behind the banners on Translink's
+journey planner ("Reduced train timetables", "Weekend track closure" and so on), but polled
+continuously into `raw.service_alerts` since Week 2 instead of read a page at a time. That
+table had been filling up for over a week before anything in the repo used it.
 
-A sidebar mode filter (Bus/Rail/Ferry/Tram) applies across tabs, and a manual refresh button clears
-the cache; underlying queries also self-refresh every 60s (live tables) or 10 minutes (heavier
-joins) on their own. Theme is set in [`.streamlit/config.toml`](.streamlit/config.toml).
+A mode filter in the sidebar (Bus, Rail, Ferry, Tram) applies to every tab, and a refresh
+button clears the cache. Queries also refresh on their own: every 60 seconds for the live
+tables and every 10 minutes for the heavier joins. The theme is set in
+[`.streamlit/config.toml`](.streamlit/config.toml).
 
 ## Shareable social image
 
-[`docs/images/hero_dashboard.png`](docs/images/hero_dashboard.png) (generated by
-[`notebooks/hero_dashboard.py`](notebooks/hero_dashboard.py)) recomposes the headline number
-from each finding above into one 4:5 portrait image sized for a LinkedIn/social post — network
-scale, citywide on-time performance, real ridership measured, and the top priority route, plus
-the demand-vs-reliability chart and busiest-routes chart. Nothing new is computed here; it's a
-recomposition of already-verified numbers from the other four scripts, so re-run those first if
-the underlying data has moved on.
+[`docs/images/hero_dashboard.png`](docs/images/hero_dashboard.png), generated by
+[`notebooks/hero_dashboard.py`](notebooks/hero_dashboard.py), pulls the headline number from
+each finding above into one 4:5 portrait image sized for LinkedIn: network scale, citywide
+on-time performance, ridership measured and the top priority route, plus the
+demand-vs-reliability and busiest-routes charts. It doesn't calculate anything new. It only
+reuses numbers from the other four scripts, so re-run those first if the data has moved on.
 
-[`docs/images/transit_infographic.png`](docs/images/transit_infographic.png) (generated by
-[`notebooks/transit_infographic.py`](notebooks/transit_infographic.py)) is the same idea in a
-different register — icon-and-big-number magazine style (network scale → performance → a
-spotlighted "fix this first" route + runners-up) rather than a chart-first dashboard. Icons are
-hand-drawn with matplotlib patches, not an emoji font — matplotlib's Agg backend can't render
-color emoji, and a missing-glyph box looks worse than no icon.
+[`docs/images/transit_infographic.png`](docs/images/transit_infographic.png), generated by
+[`notebooks/transit_infographic.py`](notebooks/transit_infographic.py), does the same job in a
+magazine style built around icons and big numbers: network scale, then performance, then the
+route to fix first and the runners-up. I drew the icons with matplotlib patches rather than an
+emoji font, because matplotlib's Agg backend can't render colour emoji and an empty box looks
+worse than no icon.
 
-## Density heatmaps — supply, demand, and bunching
+## Density heatmaps: supply, demand and bunching
 
-Full breakdown in [`docs/density_findings.md`](docs/density_findings.md), generated by
-[`notebooks/density_heatmaps.py`](notebooks/density_heatmaps.py) — three hexbin heatmaps over the
-same Greater Brisbane geography: where the network schedules service, where people actually board
-(real ridership), and where vehicles bunch together. The branching corridor shape of Brisbane's
-rail/busway spine is instantly recognizable in all three, and the differences between panels are
-the point — supply and demand track each other closely overall, but bunching concentrates far more
-tightly around the CBD/South East Busway core than either.
+The full breakdown is in [`docs/density_findings.md`](docs/density_findings.md), generated by
+[`notebooks/density_heatmaps.py`](notebooks/density_heatmaps.py). It draws three hexbin
+heatmaps over the same area of Greater Brisbane: where service is scheduled, where people
+actually board, and where vehicles bunch together. You can pick out the branching shape of the
+rail and busway network in all three. The interesting part is how they differ. Supply and
+demand line up closely overall, but bunching is packed much more tightly around the CBD and the
+South East Busway than either.
 
 ![Brisbane transit, three ways](docs/images/density_heatmaps.png)
 
 ## License
 
-Code: MIT. Data: subject to Translink and Brisbane City Council's open data
-licenses (CC BY 4.0).
+Code: MIT. Data: subject to Translink and Brisbane City Council's open data licenses
+(CC BY 4.0).
