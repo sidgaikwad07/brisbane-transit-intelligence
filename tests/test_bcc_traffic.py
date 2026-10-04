@@ -62,3 +62,56 @@ def test_parse_records_empty_input_returns_empty_df():
 def test_parse_records_parses_recorded_at_as_utc_timestamp():
     df = parse_records([_record()], fetched_at=datetime.now(tz=timezone.utc))
     assert str(df.iloc[0]["recorded_at"].tzinfo) == "UTC"
+
+
+class _FakeResponse:
+    def __init__(self, status_code, body, headers=None):
+        self.status_code = status_code
+        self._body = body
+        self.headers = headers or {}
+
+    def json(self):
+        return self._body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(self.status_code)
+
+
+def test_fetch_new_records_is_one_export_call(monkeypatch):
+    import ingestion.bcc_traffic as bcc
+
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params))
+        return _FakeResponse(200, [_record(), _record(dbid="2")], {"X-RateLimit-Remaining": "4000"})
+
+    monkeypatch.setattr(bcc.requests, "get", fake_get)
+    records = bcc.fetch_new_records(datetime(2026, 10, 5, tzinfo=timezone.utc))
+
+    assert len(records) == 2
+    assert len(calls) == 1
+    assert calls[0][0].endswith("/exports/json")
+    assert calls[0][1]["where"] == "recorded>'2026-10-05T00:00:00+00:00'"
+
+
+def test_fetch_new_records_raises_rate_limited_with_reset_time(monkeypatch):
+    import pytest
+
+    import ingestion.bcc_traffic as bcc
+
+    body = {"errorcode": 10005, "reset_time": "2026-10-05T00:00:00Z", "call_limit": 5000}
+    monkeypatch.setattr(bcc.requests, "get", lambda url, params, timeout: _FakeResponse(429, body))
+
+    with pytest.raises(bcc.RateLimited) as exc:
+        bcc.fetch_new_records(datetime(2026, 10, 4, tzinfo=timezone.utc))
+    assert exc.value.reset_at == datetime(2026, 10, 5, tzinfo=timezone.utc)
+
+
+def test_rate_limit_reset_falls_back_to_next_utc_midnight():
+    import ingestion.bcc_traffic as bcc
+
+    reset = bcc._rate_limit_reset(_FakeResponse(429, "not json"))
+    assert (reset.hour, reset.minute, reset.tzinfo) == (0, 0, timezone.utc)
+    assert reset > datetime.now(tz=timezone.utc)

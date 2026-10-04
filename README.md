@@ -139,13 +139,45 @@ Once the poller's been running a while and `od_trips` is loaded, one command reg
 finding/chart/export in this repo from current data:
 
 ```bash
-make refresh          # dbt run once, then every notebooks/*.py script, then the CSV/XLSX exports
+make refresh          # dbt run once, then every analysis + model script, then the CSV/XLSX exports
 make refresh-fast     # same, minus the slow exports
 ```
 
 See [`scripts/refresh_all.py`](scripts/refresh_all.py) for what actually runs and in what order —
 it replaced what had become a manual, easy-to-get-wrong ritual of invoking six-plus scripts by
-hand. It only regenerates local files; nothing is committed or pushed automatically.
+hand. On its own it only regenerates local files; the weekly job below is what publishes them.
+
+### Automation: health check + weekly refresh
+
+Two scheduled jobs (macOS LaunchAgents) keep the project current without anyone remembering to:
+
+```bash
+make install-automation   # install both (needs `gh auth login` done once)
+make health               # print data freshness now
+make weekly-refresh ARGS=--no-pr   # dry run of the weekly job, no GitHub
+scripts/uninstall_automation.sh
+```
+
+| Job | When | What it does |
+|---|---|---|
+| [`scripts/health_check.py`](scripts/health_check.py) | Every 15 min | Checks the newest row in each live table; a macOS notification if one goes quiet (transit > 15 min, traffic > 30 min) or the database is down, a reminder every 6h, and one when it recovers |
+| [`scripts/weekly_refresh.py`](scripts/weekly_refresh.py) | Mondays 06:00 | Reloads Brisbane/Sydney/Melbourne timetables + OD ridership, runs `refresh_all.py`, and opens a **pull request** with the regenerated docs for review |
+
+Why each exists:
+
+- **Health check:** on 3 Oct 2026 the traffic poller was "running" but locked out by the BCC
+  portal's daily limit (5,000 anonymous calls/day) and lost ~16 hours of data that can never be
+  recovered. launchd's `KeepAlive` only catches crashes; checking that new rows are actually
+  landing catches everything. (The poller itself now uses one bulk-export call per poll, ~720/day,
+  and sleeps until the quota resets if it's ever hit.)
+- **Weekly refresh:** live tables update themselves, but static data goes stale silently. Sydney
+  Trains publishes only about a month ahead, so without a reload the city comparison would lose
+  Sydney's rail network within weeks.
+
+The weekly job never touches your working copy (it runs in a separate git worktree under
+`.worktrees/`), commits only `docs/`, and never pushes to `main`. If a static load fails it stops
+before analysing a half-loaded timetable; if an analysis script fails the PR opens as a draft
+listing what failed. Logs: `logs/health_check.log`, `logs/weekly_refresh.log`.
 
 ## Week 1 findings
 

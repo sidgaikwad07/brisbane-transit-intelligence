@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{LABEL}}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PYTHON}}</string>
+        <string>scripts/health_check.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{REPO_ROOT}}</string>
+
+    <key>StandardOutPath</key>
+    <string>{{REPO_ROOT}}/logs/health_check.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{REPO_ROOT}}/logs/health_check.out.log</string>
+
+    <!-- Every 15 minutes. launchd skips intervals missed while asleep and
+         runs once on wake, which is exactly when a stale-data alert is
+         most likely to be needed. -->
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
