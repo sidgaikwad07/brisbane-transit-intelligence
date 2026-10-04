@@ -6,7 +6,7 @@ by hand.
 Runs `dbt run` exactly once up front (each script that needs the marts
 skips its own internal refresh via SKIP_DBT_REFRESH — see
 notebooks/realtime_summary.py / demand_intelligence.py), then runs every
-notebooks/*.py script that produces a findings doc or chart, in dependency
+script that produces a findings doc, chart or model card, in dependency
 order. One script failing doesn't abort the rest — each runs in its own
 subprocess, failures are collected and reported at the end, and the exit
 code reflects whether anything failed.
@@ -39,9 +39,16 @@ PIPELINE = [
     "notebooks/demand_intelligence.py",
     "notebooks/priority_routes.py",
     "notebooks/manly_lota_service_gap.py",
+    "notebooks/weekend_frequency_gap.py",
     "notebooks/density_heatmaps.py",
     "notebooks/hero_dashboard.py",
     "notebooks/transit_infographic.py",
+    # Cross-city (static GTFS for all three cities + ABS reference data)
+    "notebooks/city_comparison.py",
+    "notebooks/city_service_quality.py",
+    # Delay model: features first, then train + write the model card
+    "models/build_features.py",
+    "models/train_delay_model.py",
 ]
 EXPORT_SCRIPTS = [
     "notebooks/export_week2_data.py",
@@ -58,7 +65,11 @@ def _env() -> dict:
 def run_dbt() -> bool:
     print("=== dbt run (once, shared by every script below) ===")
     env = {**_env(), "DBT_PROFILES_DIR": str(DBT_DIR)}
-    result = subprocess.run(["dbt", "run"], cwd=DBT_DIR, env=env, capture_output=True, text=True, check=False)
+    # The dbt next to this interpreter, not whatever is on PATH: a scheduled
+    # job (scripts/weekly_refresh.py) has no activated venv.
+    dbt = Path(sys.executable).parent / "dbt"
+    dbt_cmd = str(dbt) if dbt.exists() else "dbt"
+    result = subprocess.run([dbt_cmd, "run"], cwd=DBT_DIR, env=env, capture_output=True, text=True, check=False)
     print(result.stdout[-1500:])
     if result.returncode != 0:
         print(result.stderr[-1500:])

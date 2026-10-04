@@ -18,9 +18,13 @@ GTFS_RT_ALERTS_URL = "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alert
 
 # Brisbane City Council open data (Opendatasoft platform)
 # https://data.brisbane.qld.gov.au/explore/dataset/traffic-data-at-intersection/
-BCC_TRAFFIC_API_URL = (
+# Bulk export of the dataset: every matching record in ONE request.
+# Anonymous users get 5,000 API calls/day (resets 00:00 UTC); paging the
+# records endpoint 100 at a time cost ~150 calls per poll and exhausted the
+# quota within hours every day. One export call per poll = 720 calls/day.
+BCC_TRAFFIC_EXPORT_URL = (
     "https://data.brisbane.qld.gov.au/api/explore/v2.1/catalog/datasets/"
-    "traffic-data-at-intersection/records"
+    "traffic-data-at-intersection/exports/json"
 )
 
 # Static reference data — traffic signal controller (tsc) site locations.

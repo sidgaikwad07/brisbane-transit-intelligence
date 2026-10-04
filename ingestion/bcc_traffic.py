@@ -8,9 +8,16 @@ there is nothing to backfill — the only way to build a time series is to
 poll continuously starting now and let our own table become the history.
 
 Each poll fetches only records newer than the last one we've already stored
-(`where=recorded>'<last_seen>'`, paginated 100 at a time — the API's max page
-size), so polls after the first are cheap regardless of how large the
-rolling window is.
+(`where=recorded>'<last_seen>'`) in a single call to the dataset's bulk
+export endpoint.
+
+Why one call matters: the portal allows anonymous users 5,000 API calls per
+day, reset at 00:00 UTC (10am Brisbane). The original version paged the
+records endpoint 100 at a time — ~150 calls per poll, every 2 minutes — and
+was locked out with HTTP 429 for most of every day (found 2026-10-04: only
+2-14 hours of data per day since collection began). One export call per
+poll is 720 calls/day. If the quota is exhausted anyway, the poller sleeps
+until the reset time the API reports instead of retrying every 2 minutes.
 
 Usage:
     python -m ingestion.bcc_traffic                 # poll forever, Ctrl+C to stop
@@ -31,19 +38,14 @@ import requests
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-from ingestion.config import BCC_TRAFFIC_API_URL, DATABASE_URL
+from ingestion.config import BCC_TRAFFIC_EXPORT_URL, DATABASE_URL
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_SEC = 120
-REQUEST_TIMEOUT_SEC = 20
-PAGE_SIZE = 100
-# The API rejects offset + limit > 10,000 (no cursor pagination available),
-# so a single `where` filter can only page through 10,000 records before we
-# have to re-issue the query with `since` advanced to what we've seen so far.
-MAX_OFFSET = 9900
-MAX_CHUNKS_PER_POLL = 5  # 5 x 10,000 — a full-rolling-window safety cap
+REQUEST_TIMEOUT_SEC = 60  # an export returns up to ~20K records in one response
+RATE_LIMIT_RESET_MARGIN_SEC = 60
 
 _FIELDS = [
     "dbid",
@@ -67,44 +69,40 @@ _FIELDS = [
 ]
 
 
-def fetch_page(since: datetime, offset: int) -> list[dict]:
-    since_str = since.strftime("%Y-%m-%dT%H:%M:%S%z")
-    since_str = since_str[:-2] + ":" + since_str[-2:]  # +1000 -> +10:00
-    params = {
-        "limit": PAGE_SIZE,
-        "offset": offset,
-        "order_by": "recorded asc",
-        "where": f"recorded>'{since_str}'",
-        "select": ",".join(_FIELDS),
-    }
-    resp = requests.get(BCC_TRAFFIC_API_URL, params=params, timeout=REQUEST_TIMEOUT_SEC)
-    resp.raise_for_status()
-    return resp.json().get("results", [])
+class RateLimited(Exception):
+    """The portal's daily anonymous-call quota is exhausted."""
+
+    def __init__(self, reset_at: datetime):
+        super().__init__(f"BCC API daily call limit reached; resets at {reset_at.isoformat()}")
+        self.reset_at = reset_at
+
+
+def _rate_limit_reset(resp: requests.Response) -> datetime:
+    """When a 429'd quota resets: the error body's `reset_time` if present,
+    else the next 00:00 UTC (the documented daily reset)."""
+    try:
+        return datetime.fromisoformat(resp.json()["reset_time"].replace("Z", "+00:00"))
+    except (ValueError, KeyError, TypeError):
+        now = datetime.now(tz=timezone.utc)
+        return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def fetch_new_records(since: datetime) -> list[dict]:
-    records: list[dict] = []
-    for _ in range(MAX_CHUNKS_PER_POLL):
-        offset = 0
-        chunk: list[dict] = []
-        caught_up = False
-        while offset <= MAX_OFFSET:
-            page = fetch_page(since, offset)
-            if not page:
-                caught_up = True
-                break
-            chunk.extend(page)
-            offset += PAGE_SIZE
-            if len(page) < PAGE_SIZE:
-                caught_up = True
-                break
-        records.extend(chunk)
-        if caught_up or not chunk:
-            break
-        # Hit the offset cap with more records still pending — advance the
-        # filter past what we've already collected and keep going.
-        since = max(datetime.fromisoformat(r["recorded"]) for r in chunk)
-    return records
+    since_str = since.strftime("%Y-%m-%dT%H:%M:%S%z")
+    since_str = since_str[:-2] + ":" + since_str[-2:]  # +1000 -> +10:00
+    params = {
+        "where": f"recorded>'{since_str}'",
+        "select": ",".join(_FIELDS),
+        "order_by": "recorded asc",
+    }
+    resp = requests.get(BCC_TRAFFIC_EXPORT_URL, params=params, timeout=REQUEST_TIMEOUT_SEC)
+    if resp.status_code == 429:
+        raise RateLimited(_rate_limit_reset(resp))
+    resp.raise_for_status()
+    remaining = resp.headers.get("X-RateLimit-Remaining")
+    if remaining is not None and int(remaining) < 500:
+        log.warning("BCC API calls remaining today: %s", remaining)
+    return resp.json()
 
 
 def parse_records(records: list[dict], fetched_at: datetime) -> pd.DataFrame:
@@ -191,9 +189,15 @@ def main() -> None:
     try:
         while True:
             start = time.monotonic()
+            wait = None
             try:
                 n, since = poll_once(engine, since)
                 total_rows += n
+            except RateLimited as e:
+                # Polling again before the reset only returns more 429s.
+                wait = (e.reset_at - datetime.now(tz=timezone.utc)).total_seconds() + RATE_LIMIT_RESET_MARGIN_SEC
+                log.warning("%s; sleeping %.0f min", e, wait / 60)
+                n = -1
             except Exception:
                 log.exception("Traffic poll failed")
                 n = -1
@@ -204,7 +208,7 @@ def main() -> None:
                 break
 
             elapsed = time.monotonic() - start
-            time.sleep(max(0.0, args.interval - elapsed))
+            time.sleep(max(0.0, wait if wait is not None else args.interval - elapsed))
     except KeyboardInterrupt:
         pass
     finally:
