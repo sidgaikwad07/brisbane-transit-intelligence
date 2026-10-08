@@ -372,9 +372,8 @@ def load_ridership_by_month() -> pd.DataFrame:
     and the Gold Coast light rail by their own literal route codes ("Rail",
     "GCLR") rather than a GTFS route_short_name, so a plain join to the
     static feed silently drops them — discovered while building this chart.
-    Reclassified explicitly here rather than upstream, since fixing it in
-    the dbt marts would ripple into every already-published finding that
-    depends on them.
+    Same classification as marts.mart_od_demand_by_route, repeated here
+    because that mart has no month column.
     """
     return pd.read_sql(
         """

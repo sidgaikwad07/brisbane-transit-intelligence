@@ -1,6 +1,6 @@
 # Why on-time performance doesn't show the weekend gap
 
-A fair challenge to the numbers in `docs/week2_findings.md`: weekday on-time performance (67.8%) and weekend (70.5%) are only 2.7 points apart. If weekend service is really that much worse, why doesn't the headline number show it?
+A fair challenge to the numbers in `docs/week2_findings.md`: weekday on-time performance (66.3%) and weekend (70.7%) are only 4.4 points apart. If weekend service is really that much worse, why doesn't the headline number show it?
 
 Because on-time performance and service existence measure genuinely different things, and OTP is blind to the one that actually differs most. OTP asks *"did the trips that were scheduled arrive close to their scheduled time"* — a route running once every 30 minutes, dead on schedule every time, scores 100%. It says nothing about whether that route, or dozens of others, exist on the timetable at all that day.
 
@@ -25,7 +25,7 @@ Surprisingly close — the routes that survive onto the weekend timetable (large
 
 ## Reconciling this with the OTP numbers
 
-All three findings are true at once: weekday and weekend on-time performance are close (67.8% vs 70.5%) because OTP only measures the trips that exist; a real chunk of the network (~10% of weekday ridership on Sundays) has zero weekend service at all; and among routes that do survive, frequency holds up better than expected. **Reliability, frequency, and existence are three different axes** — this project's early framing (`docs/manly_lota_service_gap.md`) already separated reliability from frequency for one corridor; this confirms coverage is a third, distinct axis at the network level.
+All three findings are true at once: weekday and weekend on-time performance are close (66.3% vs 70.7%) because OTP only measures the trips that exist; a real chunk of the network (~10% of weekday ridership on Sundays) has zero weekend service at all; and among routes that do survive, frequency holds up better than expected. **Reliability, frequency, and existence are three different axes** — this project's early framing (`docs/manly_lota_service_gap.md`) already separated reliability from frequency for one corridor; this confirms coverage is a third, distinct axis at the network level.
 
 ## Method & caveats
 

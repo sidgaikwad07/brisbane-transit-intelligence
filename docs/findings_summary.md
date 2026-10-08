@@ -32,16 +32,19 @@ Source: [`city_service_quality.md`](city_service_quality.md).
 
 ![On-time performance by mode](images/week2_on_time_by_mode.png)
 
-Measured from ten days of polled live data (1.24 million stop visits, 19-29 September), 69% of
-stop visits were on time, meaning no more than a minute early or five minutes late. Light rail
-was almost perfect (99-100%), rail was 84-86% and buses 64-69%. Ferries managed **21% on
-weekdays** and 37% at weekends.
+Measured from nearly three weeks of polled live data (1.6 million stop visits, 19 September to
+8 October), 68.5% of stop visits were on time, meaning no more than a minute early or five
+minutes late. Light rail was almost perfect (99-100%), rail was 84-86% and buses 64-70%. Ferries
+managed **33% on weekdays** and 43% at weekends. Five of the eight least punctual routes in the
+network are ferries, and they miss by running *early*: 73-91% of their stops are reached more
+than a minute ahead of the timetable. That points at padded timetables rather than slow boats.
 
 Crossing reliability against real ridership puts the **Southern Moreton Bay Islands ferry**
-at the top of the whole network's priority list. It is in the 100th percentile for riders per
-scheduled trip (about 5,200 riders a weekday) and ran on time 41% of the time. Behind it is a
-group of bus "Rocket" and express routes (443, 212, 357, 431, 141 and others) that are both busy
-and on time less than 60% of the time.
+at the top of the whole network's priority list. It is in the 99th percentile for riders per
+scheduled trip (about 5,200 riders a weekday) and ran on time 33% of the time. Behind it are two
+more ferries (F11 and the CityCat F1) and a group of busy bus routes that are on time less than
+60% of the time, many of them Logan-corridor services (546, 561, 581) and city "Rocket" or
+express routes (443, 141, 357).
 
 Sources: [`week2_findings.md`](week2_findings.md), [`priority_routes_findings.md`](priority_routes_findings.md).
 
@@ -65,16 +68,20 @@ Source: [`weekend_frequency_gap.md`](weekend_frequency_gap.md).
 ## 4. The delay model didn't work yet, and the reason is useful
 
 I trained XGBoost models to predict delay from route, time, nearby traffic, weather and active
-disruption alerts. On a fair time-based split they **lost to a naive baseline** (435s mean
-absolute error against 258s). The training window was three and a half days, and a strike
-disrupted the first two of them. The model learned what the network looks like during a strike,
-then was tested on normal days. On a random split, where both sets cover the same days, the same
-features beat the baseline (ROC-AUC 0.84). So the features carry signal; the window was too short.
+disruption alerts. On a fair time-based split, using about two weeks of data, they still **don't
+beat a naive baseline** (272s mean absolute error against 258s; ROC-AUC 0.62 for "more than five
+minutes late"). That's closer than the first run on three and a half days (435s against 258s),
+when a strike disrupted the training days but not the test days. The remaining problem is that
+average delay swings a lot from one day to the next (from about 50s to 190s), and the model has
+nothing that predicts those swings. The test days included the King's Birthday public holiday,
+which the model treats as an ordinary Monday. On a random split, where both sets cover the same
+days, the same features beat the baseline (ROC-AUC 0.84). So the features carry signal; what's
+missing is more days, fewer gaps, and calendar features such as holidays.
 
-I also found later that the traffic poller had been hitting the council API's daily limit and
-missing most morning peaks. That's fixed now, but it means the congestion half of my original
-question is still open. Answering it needs several weeks of clean traffic and delay data
-covering both normal and disrupted days.
+Collection also had gaps. Until 4 October the traffic poller kept hitting the council API's
+daily limit and missed most morning peaks, and a database outage stopped all collection from 6
+to 8 October. So the congestion half of my original question is still open. Answering it needs
+several weeks of clean traffic and delay data covering both normal and disrupted days.
 
 Source: [`delay_model_card.md`](delay_model_card.md).
 
@@ -91,8 +98,8 @@ analysis:
 
 ## Limits
 
-Everything here uses public data only. The live reliability numbers come from about ten days of
-collection, and the delay model from three and a half. The city comparison covers scheduled
+Everything here uses public data only. The live reliability numbers come from just under three weeks of
+collection (with a two-day gap), and the delay model from about two. The city comparison covers scheduled
 service, not what actually ran, because live data for Sydney and Melbourne needs API keys I
 haven't registered for. I'd treat the findings above as a well-sourced starting point for
 investigation, not settled conclusions. [`recommendations.md`](recommendations.md) turns them into

@@ -10,6 +10,12 @@
 -- come from one catastrophically delayed trip cascading down its stop
 -- sequence, making a single bad run look like a systemically unreliable
 -- route. Filter/interpret rankings by n_trips, not just n_stop_visits.
+--
+-- One row per route as riders know it (route_short_name + mode), not per
+-- GTFS route_id: Translink republishes the same route under a new route_id
+-- with each timetable version, so a window spanning two versions would
+-- otherwise split one route into several thin, duplicate rows. route_id is
+-- kept as one representative id (for labelling when a route has no name).
 with stop_delay as (
     select * from {{ ref('mart_stop_delay') }}
 ),
@@ -17,10 +23,11 @@ routes as (
     select * from {{ ref('stg_routes') }}
 )
 select
-    r.route_id,
+    min(r.route_id) as route_id,
     r.route_short_name,
-    r.route_long_name,
+    min(r.route_long_name) as route_long_name,
     r.mode,
+    count(distinct r.route_id) as n_route_ids,
     count(*) as n_stop_visits,
     count(distinct sd.trip_id) as n_trips,
     round(avg(sd.arrival_delay_sec)) as avg_arrival_delay_sec,
@@ -44,5 +51,5 @@ select
     ) as early_pct
 from stop_delay sd
 join routes r on r.route_id = sd.route_id
-group by r.route_id, r.route_short_name, r.route_long_name, r.mode
+group by coalesce(r.route_short_name, r.route_id), r.route_short_name, r.mode
 order by n_stop_visits desc

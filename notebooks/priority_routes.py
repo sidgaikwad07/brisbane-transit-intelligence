@@ -212,7 +212,7 @@ def plot_priority_matrix(df: pd.DataFrame) -> None:
     ax.spines["bottom"].set_color(INK_MUTED)
     ax.spines["left"].set_color(INK_MUTED)
     ax.tick_params(colors=INK_MUTED, labelsize=8.5)
-    ax.legend(frameon=False, loc="upper right", fontsize=8.5)
+    ax.legend(frameon=False, loc="lower right", fontsize=8.5)
 
     ax.text(
         med_otp - 1, ax.get_ylim()[1] * 0.6, "HIGH DEMAND\nLOW RELIABILITY\n(fix first)",

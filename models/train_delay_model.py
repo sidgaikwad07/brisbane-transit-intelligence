@@ -14,7 +14,7 @@ trivial baseline," not just "produces numbers."
 
 route_id and mode are used as native XGBoost categoricals (no one-hot —
 route_id alone has hundreds of distinct values). stop_id is deliberately
-excluded: at thousands of distinct values with only ~3.5 days of data,
+excluded: at thousands of distinct values with only a few weeks of data,
 it would let the model memorize specific stops rather than learn a
 generalizable pattern.
 
@@ -190,6 +190,7 @@ def write_report(
     n_signal_pct = 100 * df["has_nearby_signal"].mean()
     df_by_date = df.assign(date=df["scheduled_arrival"].dt.date).groupby("date")["arrival_delay_sec"].mean()
     regime_shift_note = "; ".join(f"{d}: {v:.0f}s avg" for d, v in df_by_date.items())
+    daily_counts = df.groupby(df["scheduled_arrival"].dt.date).size()
     lines = [
         "# Delay-prediction model card",
         "",
@@ -224,7 +225,7 @@ def write_report(
         "leak from test into train and overstate performance.",
         "- **Features:** mode, route_id (both native XGBoost categoricals, no one-hot), hour, day of week, "
         "is_weekend, local traffic saturation + signal count, has_nearby_signal, rainfall, max temp, wind.",
-        "- **Deliberately excluded:** `stop_id` — thousands of distinct values against ~3.5 days of data "
+        "- **Deliberately excluded:** `stop_id` — thousands of distinct values against a few weeks of data "
         "would let the model memorize specific stops rather than learn a pattern that generalizes.",
         "",
         "## Results",
@@ -247,19 +248,22 @@ def write_report(
         "",
         f"Test-set positive rate (actually >5min late): {100 * clf_metrics['positive_rate_test']:.1f}%",
         "",
-        "**The time-split model currently loses to its own baseline "
-        f"({reg_metrics['mae_sec']:.0f}s MAE vs. {reg_metrics['baseline_mae_sec']:.0f}s; "
-        f"{clf_metrics['accuracy']:.3f} accuracy vs. {clf_metrics['baseline_accuracy']:.3f}). This is a real "
-        "result, not a bug, and it's diagnosable: average delay across the window is "
-        f"{regime_shift_note} — the network was genuinely, substantially less reliable on 25-26 Sep than "
-        "27-28 Sep (independently consistent with the STRIKE-caused \"Reduced train timetables\" alert found "
-        "active in `raw.service_alerts` over this period). The model trains almost entirely on the bad-regime "
-        "days and is tested entirely on the good-regime day, and even with `n_disruption_alerts` included, "
-        "route/hour/day-of-week features don't fully carry that shift across the train/test boundary — a "
-        "constant baseline set to the train mean ends up more competitive than it should be, precisely "
-        "because the model's route/hour-specific patterns learned under disruption don't transfer to normal "
-        "conditions. The fix isn't a modeling trick, it's more data: enough days to include multiple "
-        "disruption/no-disruption cycles in both train and test.",
+        (
+            "**The time-split model currently loses to its own baseline "
+            if reg_metrics["mae_sec"] > reg_metrics["baseline_mae_sec"]
+            else "**The time-split model beats its baseline "
+        )
+        + f"({reg_metrics['mae_sec']:.0f}s MAE vs. {reg_metrics['baseline_mae_sec']:.0f}s; "
+        f"{clf_metrics['accuracy']:.3f} accuracy vs. {clf_metrics['baseline_accuracy']:.3f}).** "
+        f"The test set covers {test['scheduled_arrival'].min():%Y-%m-%d %H:%M} to "
+        f"{test['scheduled_arrival'].max():%Y-%m-%d %H:%M} UTC. Average delay swings a lot from day to day "
+        f"({regime_shift_note}), and daily row counts are very uneven ({daily_counts.min():,} to "
+        f"{daily_counts.max():,}) because collection had gaps. Route, hour and day-of-week features can't "
+        "anticipate a day-level swing (a strike, an incident, a holiday timetable) they haven't seen, so a "
+        "constant set to the training mean is hard to beat whenever the test days behave differently from "
+        "the training days. The features also have no public-holiday flag, so a holiday is treated as an "
+        "ordinary weekday. More days of data spanning several of these swings, and a holiday feature, are "
+        "the fixes; a different model isn't.",
         "",
         "### Random split (diagnostic only — not a valid deployment estimate)",
         "",
@@ -276,7 +280,7 @@ def write_report(
         "",
         (
             "The model beats baseline here, confirming the features do carry real signal — the time-split "
-            "failure above is specifically a too-short-a-window problem, not a broken feature set."
+            "result above is a problem of too few, too uneven days, not a broken feature set."
             if reg_metrics_rand["mae_sec"] < reg_metrics_rand["baseline_mae_sec"]
             else "The model **still** doesn't clearly beat baseline even with leakage allowed, which points "
             "at the feature set itself needing work, not just more days of data."
