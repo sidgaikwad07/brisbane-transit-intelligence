@@ -86,7 +86,8 @@ not just code — the goal is a working artifact at every checkpoint.
   traffic-feature results need re-checking once a full-day window exists.
 - [ ] README pass, architecture diagram finalized
 - [ ] Screen-recorded demo (GIF/video) for LinkedIn
-- [ ] Write-up: what the data showed, one or two concrete, specific findings about Brisbane's network
+- [x] Write-up: [`docs/findings_summary.md`](docs/findings_summary.md) — four headline findings
+  (frequency gap vs peers, ferry reliability, weekend route coverage, why the delay model hasn't worked yet)
 
 ## City comparison (added 2026-09-29) — Brisbane vs. Sydney vs. Melbourne
 User asked for a cross-city comparison so Brisbane's findings could be benchmarked against peers

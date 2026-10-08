@@ -22,7 +22,8 @@ and answer one question:
 
 ## Status
 
-Still being built. [`ROADMAP.md`](ROADMAP.md) has the plan and what's done so far.
+The analysis is finished. [`docs/findings_summary.md`](docs/findings_summary.md) has the four
+main findings, and [`ROADMAP.md`](ROADMAP.md) lists what's done and what's still open.
 
 ## Architecture
 
