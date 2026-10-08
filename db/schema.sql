@@ -150,6 +150,19 @@ CREATE TABLE IF NOT EXISTS raw.service_alerts (
     header_text  TEXT,
     description  TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_sa_polled_brin ON raw.service_alerts USING BRIN (polled_at);
+
+-- When each alert applies. One row per (poll, alert, active period): a track
+-- closure scheduled for next weekend is in the feed now, so without its
+-- periods it would look like it's in effect today. NULL start/end = open-ended.
+CREATE TABLE IF NOT EXISTS raw.service_alert_periods (
+    id            BIGSERIAL PRIMARY KEY,
+    polled_at     TIMESTAMPTZ NOT NULL,
+    alert_id      TEXT NOT NULL,
+    period_start  TIMESTAMPTZ,
+    period_end    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_sap_polled_brin ON raw.service_alert_periods USING BRIN (polled_at);
 
 -- ── External data (Week 3) ──────────────────────────────────────────────
 

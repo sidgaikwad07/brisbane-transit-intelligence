@@ -156,6 +156,26 @@ def parse_service_alerts(feed: gtfs_realtime_pb2.FeedMessage, polled_at: datetim
     return pd.DataFrame(rows)
 
 
+def parse_alert_periods(feed: gtfs_realtime_pb2.FeedMessage, polled_at: datetime) -> pd.DataFrame:
+    """One row per (alert, active period). Translink publishes closures ahead
+    of time (a weekend track closure is in the feed all week), so this is what
+    tells "in effect now" apart from "coming up". A missing start or end
+    (0 in the protobuf) means open-ended and is stored as NULL; an alert with
+    no periods at all is in effect for as long as it's in the feed.
+    """
+
+    def _ts(epoch: int) -> datetime | None:
+        return datetime.fromtimestamp(epoch, tz=timezone.utc) if epoch else None
+
+    rows = [
+        {"polled_at": polled_at, "alert_id": entity.id, "period_start": _ts(p.start), "period_end": _ts(p.end)}
+        for entity in feed.entity
+        if entity.HasField("alert")
+        for p in entity.alert.active_period
+    ]
+    return pd.DataFrame(rows, columns=["polled_at", "alert_id", "period_start", "period_end"])
+
+
 def write_rows(engine: Engine, table: str, df: pd.DataFrame) -> int:
     if df.empty:
         return 0
@@ -186,6 +206,7 @@ def poll_once(engine: Engine) -> dict[str, int]:
     try:
         alerts_feed = fetch_feed(GTFS_RT_ALERTS_URL)
         counts["service_alerts"] = write_rows(engine, "service_alerts", parse_service_alerts(alerts_feed, polled_at))
+        write_rows(engine, "service_alert_periods", parse_alert_periods(alerts_feed, polled_at))
     except Exception:
         log.exception("Service Alerts poll failed")
         counts["service_alerts"] = -1
