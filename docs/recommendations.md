@@ -26,34 +26,36 @@ fixes and are currently invisible to each other in a single on-time-performance 
 
 **Finding:** [`docs/priority_routes_findings.md`](priority_routes_findings.md) —
 **SMBI (Southern Moreton Bay Islands ferry)** is the single highest-priority route citywide:
-100th-percentile real demand (5,208 riders/weekday), running on-time only 41% of the time
-(4th-percentile reliability). Network-wide, ferry on-time performance is **21% on weekdays and
-37% at weekends** ([`docs/week2_findings.md`](week2_findings.md)), far worse than bus (64-69%),
-rail (84-86%) or tram (99-100%).
+99th-percentile demand pressure (5,208 riders/weekday), running on-time only 33% of the time
+(2nd-percentile reliability). Network-wide, ferry on-time performance is **33% on weekdays and
+43% at weekends** ([`docs/week2_findings.md`](week2_findings.md)), far worse than bus (64-70%),
+rail (84-86%) or tram (99-100%). Five of the network's eight least punctual routes are ferries
+(F23, F24, F50, F22, F21), and they miss by running **early**, not late: 73-91% of their stop
+visits are more than a minute ahead of the timetable.
 
 **Recommendation:** Ferry reliability warrants its own dedicated investigation, independent of
-bus/rail initiatives — it's a small fleet (so likely tractable root-causes: vessel availability,
-tidal/weather sensitivity, terminal turnaround) affecting a captive ridership with limited
-alternative routes to the mainland.
+bus/rail initiatives. Systematic early running points first at the timetable itself (running
+times padded beyond what vessels need), which is cheaper to fix than fleet or terminal problems.
+It affects a captive ridership with limited alternatives, especially to the bay islands.
 
 ### 3. A specific, named list of bus routes is both high-demand and unreliable
 
 **Finding:** [`docs/priority_routes_findings.md`](priority_routes_findings.md) lists the
-network's top 15 routes by `demand percentile × unreliability percentile` — headed by SMBI, then
-a cluster of bus routes (443, 212, 357, 431, 546, 141, 426, 220, 332, 598, 186, 118, 206, 210)
-running at **38-58% on-time while sitting in the top fifth of the network for demand pressure**. Two of these (220, 227 in earlier
-runs) independently corroborate the Manly/Lota/Cleveland case study below — the same routes
-surface from two unrelated analysis angles.
+network's top 15 routes by `demand percentile × unreliability percentile`. After the SMBI, F11
+and F1 ferries, it's a cluster of bus routes (561, 443, 546, 581, 141, 577, 357, 281, 551, 431,
+569, 426) running at **25-56% on-time while sitting in the top seventh of the network for demand
+pressure**. Many are Logan-corridor services (546, 551, 561, 569, 577, 581) and city "Rocket" or
+express routes (141, 357, 426, 431, 443).
 
 **Recommendation:** This is a ready-made, ranked, demand-weighted worklist — not a hypothesis
-that needs more research to be actionable. Route 220 alone affects 1,083 riders/weekday at only
-53% on-time.
+that needs more research to be actionable. Route 546 alone carries 684 riders/weekday at 25%
+on-time.
 
 ### 4. Rail and tram are already reliable — don't spend reliability budget there
 
 **Finding:** [`docs/week2_findings.md`](week2_findings.md) — rail runs on-time 84-86% of the
-time, tram/light rail 99-100%, both essentially flat between weekday and weekend. Bus (64-69%)
-and ferry (21-37%) are where the network's reliability problem actually lives.
+time, tram/light rail 99-100%, both essentially flat between weekday and weekend. Bus (64-70%)
+and ferry (33-43%) are where the network's reliability problem actually lives.
 
 **Recommendation:** If reliability-improvement funding is mode-agnostic, the data says direct it
 at bus operations and ferry, not rail infrastructure — rail is already performing well by any
@@ -75,7 +77,7 @@ pattern likely recurs on every rail line's weekend timetable (see #1 and #6).
 
 ### 6. Bunching is a real, measurable, and geographically concentrated problem
 
-**Finding:** [`docs/density_findings.md`](density_findings.md) — 196,004 recorded bunching
+**Finding:** [`docs/density_findings.md`](density_findings.md) — 296,939 recorded bunching
 snapshots (two vehicles on the same route within 400m, same poll) in the collection window,
 concentrated far more tightly around the CBD/inner-city core than either scheduled service or
 real ridership are — i.e., bunching isn't simply "where the busiest routes are," it clusters
@@ -86,18 +88,18 @@ intersections, dwell-heavy stops, or signal-priority gaps — the geographic con
 in the heatmap, not just the aggregate count) suggests a location-specific cause worth a targeted
 site visit, not just "add more buses."
 
-### 7. Congestion/weather-based delay prediction needs a longer baseline before it's trustworthy
+### 7. Congestion/weather-based delay prediction needs a longer, cleaner baseline first
 
 **Finding:** [`docs/delay_model_card.md`](delay_model_card.md) — an XGBoost delay-prediction
-model trained on ~3.5 days of real traffic+weather+delay data currently **loses to a naive
-baseline** on a fair (time-based) evaluation, because that short window contains one clear
-reliability regime shift (a strike-caused disruption) that a few days of data can't teach a model
-to generalize across. A diagnostic test confirms the underlying features (route, hour,
-congestion, disruption-alert count) do carry real signal.
+model trained on about two weeks of real traffic, weather and delay data still **doesn't beat a
+naive baseline** on a fair (time-based) evaluation (272s mean error against 258s). Daily average
+delay swings widely (from about 50s to 190s), collection had gaps, and the test days included a
+public holiday the features can't represent. A diagnostic random split confirms the features
+(route, hour, congestion, disruption-alert count) do carry real signal.
 
 **Recommendation:** Not "the model doesn't work" — rather, "don't stand up a congestion-based
-delay-prediction tool on a data window this short." Revisit once traffic/weather collection spans
-multiple weeks including both disrupted and normal-operation periods.
+delay-prediction tool without several weeks of gap-free data and calendar features such as
+public holidays." Revisit once collection spans multiple disrupted and normal periods.
 
 ## B. Process-automation recommendations — reducing manual reporting effort
 

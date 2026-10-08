@@ -32,15 +32,12 @@ not just code — the goal is a working artifact at every checkpoint.
   case study's routes 220/227 in the citywide top 15
 - [ ] Longer-term: route planning via RAPTOR (+ live-delay layering), scenario comparison —
   scoped as a separate, larger initiative once this foundation is proven; not committed to yet
-- [ ] **Known gap, found 2026-09-27:** the OD dataset identifies heavy rail and the Gold Coast light
-  rail by literal route codes ("Rail", "GCLR"), not a GTFS route_short_name. Every existing
-  route-level join (`scheduled_weekday_trips_by_route` in `demand_intelligence.py`, used by
-  `priority_routes.py` and downstream by `hero_dashboard.py`/`transit_infographic.py`) silently
-  drops both — meaning "top priority route" rankings and "busiest routes" charts have a blind spot
-  for two entire modes (~36% of all real ridership). Worked around locally in the dashboard's
-  Ridership trends tab (explicit reclassification); not yet fixed at the source
-  (`stg_od_trips`/`mart_od_demand_by_route`), which would require re-deriving those marts and
-  re-checking every finding that depends on them.
+- [x] **Known gap, found 2026-09-27, fixed at the source 2026-10-08:** the OD dataset identifies
+  heavy rail and the Gold Coast light rail by literal route codes ("Rail", "GCLR"), not a GTFS
+  route_short_name, so they came out of `mart_od_demand_by_route` with no mode (~36% of all real
+  ridership). The mart now classifies both and flags them `is_network_aggregate`. Per-route joins
+  to the timetable still (correctly) don't match them, since each is a whole network;
+  `priority_routes.mode_aggregate_rows()` handles them as network-wide rows.
 
 ## Week 3 — Explaining delay
 - [x] BCC intersection traffic ingestion (`ingestion/bcc_traffic.py`) — the API is a rolling
@@ -84,6 +81,18 @@ not just code — the goal is a working artifact at every checkpoint.
   morning peak. Fixed with a single bulk-export call per poll (~720/day) and sleeping until the
   quota resets if it's ever hit. The Week 3 delay model was trained on that patchy data, so its
   traffic-feature results need re-checking once a full-day window exists.
+- [x] **Wrap-up refresh (2026-10-08):** Docker had been down since 6 Oct, so collection has a
+  ~2.5-day gap (6-8 Oct). Restarted, and re-ran everything on the full window (19 Sep - 8 Oct).
+  Two fixes found along the way:
+  - `.venv` rebuilt on Python 3.12 (conda env `brisbane-py312`, which also supplies OpenMP for
+    xgboost). scipy 1.15's macOS build, the last for Python 3.10, won't load on this macOS
+    version, which broke six of the fourteen refresh steps. Old venv kept as `.venv-py310-backup`.
+  - `mart_on_time_performance` is now one row per route number + mode, not per GTFS route_id.
+    Translink republishes routes under a new route_id per timetable version, so the longer
+    window had split routes into duplicate, thinly-sampled rows (up to 10 per route) that showed
+    up twice in the priority and worst/best tables.
+  The delay model, retrained on ~2 weeks, still doesn't beat its baseline; its card now
+  generates its explanation from the data instead of describing the first 3.5-day run.
 - [ ] README pass, architecture diagram finalized
 - [ ] Screen-recorded demo (GIF/video) for LinkedIn
 - [x] Write-up: [`docs/findings_summary.md`](docs/findings_summary.md) — four headline findings
