@@ -26,10 +26,10 @@ fixes and are currently invisible to each other in a single on-time-performance 
 
 **Finding:** [`docs/priority_routes_findings.md`](priority_routes_findings.md) —
 **SMBI (Southern Moreton Bay Islands ferry)** is the single highest-priority route citywide:
-100th-percentile real demand (5,208 riders/weekday), running on-time only 44% of the time
-(5th-percentile reliability). Network-wide, ferry on-time performance sits at **31-34%**
-([`docs/week2_findings.md`](week2_findings.md)) — dramatically worse than bus (64-66%), rail
-(86-87%), or tram (99-100%).
+100th-percentile real demand (5,208 riders/weekday), running on-time only 41% of the time
+(4th-percentile reliability). Network-wide, ferry on-time performance is **21% on weekdays and
+37% at weekends** ([`docs/week2_findings.md`](week2_findings.md)), far worse than bus (64-69%),
+rail (84-86%) or tram (99-100%).
 
 **Recommendation:** Ferry reliability warrants its own dedicated investigation, independent of
 bus/rail initiatives — it's a small fleet (so likely tractable root-causes: vessel availability,
@@ -40,8 +40,8 @@ alternative routes to the mainland.
 
 **Finding:** [`docs/priority_routes_findings.md`](priority_routes_findings.md) lists the
 network's top 15 routes by `demand percentile × unreliability percentile` — headed by SMBI, then
-a cluster of bus routes (443, 302, 212, 357, 431, 141, 426, 118, 546, 332, 220, 186, 598, 331)
-running at **30-55% on-time despite top-decile ridership**. Two of these (220, 227 in earlier
+a cluster of bus routes (443, 212, 357, 431, 546, 141, 426, 220, 332, 598, 186, 118, 206, 210)
+running at **38-58% on-time while sitting in the top fifth of the network for demand pressure**. Two of these (220, 227 in earlier
 runs) independently corroborate the Manly/Lota/Cleveland case study below — the same routes
 surface from two unrelated analysis angles.
 
@@ -51,9 +51,9 @@ that needs more research to be actionable. Route 220 alone affects 1,083 riders/
 
 ### 4. Rail and tram are already reliable — don't spend reliability budget there
 
-**Finding:** [`docs/week2_findings.md`](week2_findings.md) — rail runs on-time 86-87% of the
-time, tram/light rail 99-100%, both essentially flat between weekday and weekend. Bus (64-66%)
-and ferry (31-34%) are where the network's reliability problem actually lives.
+**Finding:** [`docs/week2_findings.md`](week2_findings.md) — rail runs on-time 84-86% of the
+time, tram/light rail 99-100%, both essentially flat between weekday and weekend. Bus (64-69%)
+and ferry (21-37%) are where the network's reliability problem actually lives.
 
 **Recommendation:** If reliability-improvement funding is mode-agnostic, the data says direct it
 at bus operations and ferry, not rail infrastructure — rail is already performing well by any
@@ -75,7 +75,7 @@ pattern likely recurs on every rail line's weekend timetable (see #1 and #6).
 
 ### 6. Bunching is a real, measurable, and geographically concentrated problem
 
-**Finding:** [`docs/density_findings.md`](density_findings.md) — 106,299+ recorded bunching
+**Finding:** [`docs/density_findings.md`](density_findings.md) — 196,004 recorded bunching
 snapshots (two vehicles on the same route within 400m, same poll) in the collection window,
 concentrated far more tightly around the CBD/inner-city core than either scheduled service or
 real ridership are — i.e., bunching isn't simply "where the busiest routes are," it clusters
