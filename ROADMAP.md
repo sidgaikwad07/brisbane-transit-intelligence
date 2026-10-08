@@ -93,6 +93,11 @@ not just code — the goal is a working artifact at every checkpoint.
     up twice in the priority and worst/best tables.
   The delay model, retrained on ~2 weeks, still doesn't beat its baseline; its card now
   generates its explanation from the data instead of describing the first 3.5-day run.
+- [x] **Closures & works map (2026-10-09):** a third live-map view showing track closures (drawn
+  along the named lines), station and stop closures, detours and lift outages from GTFS-RT
+  service alerts, each marked active now or upcoming. Needed a new `raw.service_alert_periods`
+  table (the poller had been dropping each alert's active period, so a closure scheduled for
+  next weekend looked current) and a BRIN index on `raw.service_alerts.polled_at`.
 - [ ] README pass, architecture diagram finalized
 - [ ] Screen-recorded demo (GIF/video) for LinkedIn
 - [x] Write-up: [`docs/findings_summary.md`](docs/findings_summary.md) — four headline findings

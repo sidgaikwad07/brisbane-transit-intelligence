@@ -238,7 +238,7 @@ def load_active_alerts() -> pd.DataFrame:
     """
     return pd.read_sql(
         """
-        WITH latest_poll AS (SELECT MAX(polled_at) AS t FROM raw.service_alerts)
+        WITH latest_poll AS (SELECT MAX(polled_at) AS t FROM raw.service_alerts WHERE polled_at > NOW() - INTERVAL '30 minutes')
         SELECT sa.header_text, sa.cause, sa.effect, COUNT(DISTINCT sa.route_id) AS n_routes
         FROM raw.service_alerts sa
         CROSS JOIN latest_poll
@@ -248,6 +248,187 @@ def load_active_alerts() -> pd.DataFrame:
         """,
         engine,
     )
+
+
+# Translink alerts for closures and works, grouped the way a rider thinks
+# about them. Order matters: the first matching rule wins.
+CLOSURE_CATEGORIES = {
+    "Track closure": "#ff5c5c",
+    "Station closure": "#ff8a3d",
+    "Stop closure / moved": "#f5c84c",
+    "Detour / stops missed": "#c792ea",
+    "Lift / accessibility outage": "#3ea6ff",
+    "Other works": "#8b949e",
+}
+
+
+def classify_closure(header: str, cause: str | None, effect: str | None) -> str | None:
+    h = (header or "").lower()
+    if effect == "ACCESSIBILITY_ISSUE" or "lift outage" in h or "escalator" in h:
+        return "Lift / accessibility outage"
+    if any(k in h for k in ("track closure", "tram closure", "line closure", "shuttle")):
+        return "Track closure"
+    if "station" in h and "closure" in h and "stop" not in h:
+        return "Station closure"
+    if effect == "DETOUR" or "stops missed" in h or "detour" in h:
+        return "Detour / stops missed"
+    if effect == "STOP_MOVED" or "stop closure" in h or "stop change" in h:
+        return "Stop closure / moved"
+    if cause in ("CONSTRUCTION", "MAINTENANCE"):
+        return "Other works"
+    return None  # strikes, delays, extra services: not closures or works
+
+
+# Rail line names as they appear in alert headlines, mapped to the city-to-end
+# service that covers that line. Track-closure alerts list every service using
+# the affected track (through-running ones like Ferny Grove - Beenleigh too),
+# so drawing those would light up lines that aren't closed.
+RAIL_LINE_ROUTES = {
+    "beenleigh": ["BRBN"],
+    "gold coast": ["BRVL"],
+    "cleveland": ["BRCL"],
+    "shorncliffe": ["BRSH"],
+    "ferny grove": ["BRFG"],
+    "caboolture": ["BRCA"],
+    "redcliffe": ["BRRP"],
+    "sunshine coast": ["BRGY"],
+    "nambour": ["NABR"],
+    "ipswich": ["BRIP"],
+    "rosewood": ["IPRW"],
+    "springfield": ["BRSP"],
+    "doomben": ["BRDB"],
+    "airport": ["BRBD"],
+}
+
+
+def closure_line_routes(header: str, affected_routes: list[str]) -> list[str]:
+    h = (header or "").lower()
+    named = sorted({r for name, routes in RAIL_LINE_ROUTES.items() if name in h for r in routes})
+    if named:
+        return named
+    return affected_routes if len(affected_routes) <= 3 else []
+
+
+# The latest poll is found within a recent window: BRIN indexes make a range
+# scan fast, but a bare MAX(polled_at) over the whole table takes ~10s.
+_LATEST_ALERT_POLL = (
+    "SELECT MAX(polled_at) FROM raw.service_alerts WHERE polled_at > NOW() - INTERVAL '30 minutes'"
+)
+
+
+@st.cache_data(ttl=CACHE_TTL_FAST)
+def load_closures() -> dict[str, pd.DataFrame]:
+    """Closure/works alerts from the latest poll, with when they apply and
+    where they are. Alert route_ids carry a timetable-version suffix
+    ("BRBN-5185") newer than the loaded static feed, so routes are matched on
+    the stable short name before the dash."""
+    alerts = pd.read_sql(
+        f"""
+        SELECT DISTINCT alert_id, route_id, stop_id, cause, effect, header_text
+        FROM raw.service_alerts
+        WHERE polled_at = ({_LATEST_ALERT_POLL}) AND header_text IS NOT NULL
+        """,
+        engine,
+    )
+    if alerts.empty:
+        return {"alerts": pd.DataFrame(), "stops": pd.DataFrame(), "lines": pd.DataFrame()}
+
+    per_alert = alerts.groupby("alert_id").agg(
+        header_text=("header_text", "first"), cause=("cause", "first"), effect=("effect", "first")
+    )
+    per_alert["category"] = [
+        classify_closure(r.header_text, r.cause, r.effect) for r in per_alert.itertuples()
+    ]
+    per_alert = per_alert.dropna(subset=["category"])
+
+    periods = pd.read_sql(
+        """
+        SELECT alert_id, period_start, period_end FROM raw.service_alert_periods
+        WHERE polled_at = (SELECT MAX(polled_at) FROM raw.service_alert_periods
+                           WHERE polled_at > NOW() - INTERVAL '30 minutes')
+        """,
+        engine,
+    )
+    now = pd.Timestamp.now(tz="UTC")
+    status, starts, ends = {}, {}, {}
+    for alert_id in per_alert.index:
+        p = periods[periods["alert_id"] == alert_id]
+        if p.empty:  # no periods: in effect for as long as it's in the feed
+            status[alert_id], starts[alert_id], ends[alert_id] = "Active now", pd.NaT, pd.NaT
+            continue
+        start = p["period_start"].fillna(pd.Timestamp.min.tz_localize("UTC"))
+        end = p["period_end"].fillna(pd.Timestamp.max.tz_localize("UTC"))
+        current = p[(start <= now) & (end > now)]
+        future = p[start > now].sort_values("period_start")
+        if not current.empty:
+            row = current.iloc[0]
+            status[alert_id] = "Active now"
+            # Some weekend-only alerts are published as one long period
+            # (e.g. "Shorncliffe line weekend shuttle", Sep-Dec). The feed
+            # can't say "weekends only", but the headline does.
+            long_period = pd.isna(row["period_end"]) or row["period_end"] - row["period_start"] > pd.Timedelta(days=4)
+            is_weekday = now.tz_convert("Australia/Brisbane").dayofweek < 5
+            if "weekend" in per_alert.at[alert_id, "header_text"].lower() and long_period and is_weekday:
+                status[alert_id] = "Upcoming"
+        elif not future.empty:
+            row = future.iloc[0]
+            status[alert_id] = "Upcoming"
+        else:
+            status[alert_id] = "Ended"
+            row = p.iloc[-1]
+        starts[alert_id], ends[alert_id] = row["period_start"], row["period_end"]
+    per_alert["status"] = pd.Series(status)
+    per_alert["period_start"] = pd.Series(starts)
+    per_alert["period_end"] = pd.Series(ends)
+    per_alert = per_alert[per_alert["status"] != "Ended"]
+
+    affected = alerts[alerts["alert_id"].isin(per_alert.index)].copy()
+    affected["route"] = affected["route_id"].str.rsplit("-", n=1).str[0]
+    routes_by_alert = affected.dropna(subset=["route"]).groupby("alert_id")["route"].agg(
+        lambda r: sorted(set(r))
+    )
+    per_alert["routes"] = routes_by_alert.reindex(per_alert.index)
+    per_alert["n_stops"] = affected.dropna(subset=["stop_id"]).groupby("alert_id")["stop_id"].nunique()
+    per_alert = per_alert.reset_index()
+
+    stop_ids = affected["stop_id"].dropna().unique().tolist()
+    stops = pd.read_sql(
+        "SELECT stop_id, stop_name, stop_lat, stop_lon FROM raw.stops WHERE stop_id = ANY(%(ids)s)",
+        engine,
+        params={"ids": stop_ids},
+    ).merge(affected[["alert_id", "stop_id"]].dropna().drop_duplicates(), on="stop_id")
+
+    # Track closures are drawn as the affected lines: one representative shape
+    # (the one most trips use) per route short name.
+    track = per_alert[per_alert["category"] == "Track closure"]
+    track_routes = pd.DataFrame(
+        [
+            {"alert_id": r.alert_id, "route": route}
+            for r in track.itertuples()
+            for route in closure_line_routes(r.header_text, r.routes if isinstance(r.routes, list) else [])
+        ],
+        columns=["alert_id", "route"],
+    )
+    lines = pd.DataFrame()
+    if not track_routes.empty:
+        lines = pd.read_sql(
+            """
+            WITH rep AS (
+                SELECT DISTINCT ON (r.route_short_name) r.route_short_name AS route, t.shape_id
+                FROM raw.trips t JOIN raw.routes r ON r.route_id = t.route_id
+                WHERE r.route_short_name = ANY(%(routes)s) AND t.shape_id IS NOT NULL
+                GROUP BY r.route_short_name, t.shape_id
+                ORDER BY r.route_short_name, COUNT(*) DESC
+            )
+            SELECT rep.route, s.shape_pt_lat AS lat, s.shape_pt_lon AS lon, s.shape_pt_sequence AS seq
+            FROM rep JOIN raw.shapes s ON s.shape_id = rep.shape_id
+            WHERE s.shape_pt_sequence %% 4 = 0
+            ORDER BY rep.route, s.shape_pt_sequence
+            """,
+            engine,
+            params={"routes": track_routes["route"].unique().tolist()},
+        ).merge(track_routes, on="route")
+    return {"alerts": per_alert, "stops": stops, "lines": lines}
 
 
 @st.cache_data(ttl=CACHE_TTL_FAST)
@@ -713,12 +894,125 @@ tab_map, tab_live, tab_reliability, tab_ridership, tab_priority, tab_traffic = s
     ]
 )
 
+def _brisbane_time(ts) -> str:
+    if pd.isna(ts):
+        return "open-ended"
+    return pd.Timestamp(ts).tz_convert("Australia/Brisbane").strftime("%a %d %b %H:%M")
+
+
+def render_closures() -> None:
+    data = load_closures()
+    alerts = data["alerts"]
+    if alerts.empty:
+        st.info("No closures or works in the latest service-alerts poll.")
+        return
+
+    include_upcoming = st.toggle("Include upcoming closures", value=True)
+    shown = alerts if include_upcoming else alerts[alerts["status"] == "Active now"]
+    shown = shown.assign(
+        when=[
+            f"{_brisbane_time(r.period_start)} → {_brisbane_time(r.period_end)}"
+            for r in shown.itertuples()
+        ]
+    )
+    by_id = shown.set_index("alert_id")
+
+    fig = go.Figure()
+    # Lines for track closures: active solid and bright, upcoming faint.
+    lines = data["lines"]
+    if not lines.empty:
+        lines = lines[lines["alert_id"].isin(by_id.index)]
+        # Solid muted colour for upcoming rather than transparency: several
+        # upcoming closures on shared track would otherwise stack up bright.
+        for status, width, color in (("Upcoming", 3, "#6b3438"), ("Active now", 5, CLOSURE_CATEGORIES["Track closure"])):
+            ids = by_id.index[by_id["status"] == status]
+            part = lines[lines["alert_id"].isin(ids)]
+            if part.empty:
+                continue
+            lat, lon, text = [], [], []
+            for (alert_id, _route), seg in part.groupby(["alert_id", "route"], sort=False):
+                label = f"{by_id.at[alert_id, 'header_text']}<br>{status} · {by_id.at[alert_id, 'when']}"
+                lat += seg["lat"].tolist() + [None]
+                lon += seg["lon"].tolist() + [None]
+                text += [label] * len(seg) + [None]
+            fig.add_trace(
+                go.Scattermapbox(
+                    lat=lat, lon=lon, mode="lines", text=text, hoverinfo="text",
+                    line=dict(width=width, color=color), name=f"Track closure ({status.lower()})",
+                )
+            )
+    # Markers for everything tied to stops.
+    stops = data["stops"].merge(shown[["alert_id", "category", "status", "header_text", "when"]], on="alert_id")
+    for category, color in CLOSURE_CATEGORIES.items():
+        if category == "Track closure":  # drawn as lines above
+            continue
+        for status, opacity in (("Upcoming", 0.4), ("Active now", 0.95)):
+            part = stops[(stops["category"] == category) & (stops["status"] == status)]
+            if part.empty:
+                continue
+            fig.add_trace(
+                go.Scattermapbox(
+                    lat=part["stop_lat"], lon=part["stop_lon"], mode="markers",
+                    marker=dict(size=11 if status == "Active now" else 8, color=color),
+                    opacity=opacity, name=f"{category} ({status.lower()})",
+                    text=part["stop_name"] + "<br>" + part["header_text"] + "<br>" + status + " · " + part["when"],
+                    hoverinfo="text",
+                )
+            )
+    fig.update_layout(
+        mapbox=dict(style="white-bg", layers=DARK_BASEMAP_LAYERS, center=BRISBANE_CENTER, zoom=8.6),
+    )
+    style_fig(fig, height=560)
+    fig.update_layout(legend=dict(y=0.98, x=0.01, bgcolor="rgba(13,17,23,0.75)"))
+    st.plotly_chart(fig, use_container_width=True)
+
+    active = shown[shown["status"] == "Active now"]
+    n_track = int((active["category"] == "Track closure").sum())
+    n_stop = int((active["category"] == "Stop closure / moved").sum())
+    next_track = alerts[(alerts["category"] == "Track closure") & (alerts["status"] == "Upcoming")]
+    next_track = next_track.sort_values("period_start").head(1)
+    msg = (
+        f"<b>{len(active)} closures or works in effect right now</b> — {n_track} track "
+        f"{'closure' if n_track == 1 else 'closures'}, {n_stop} stop {'closure' if n_stop == 1 else 'closures'}."
+    )
+    if not next_track.empty:
+        nt = next_track.iloc[0]
+        msg += f" Next track closure: <b>{nt['header_text']}</b>, from {_brisbane_time(nt['period_start'])}."
+    insight(msg, kind="warn" if n_track else "")
+
+    table = shown.assign(
+        routes=shown["routes"].apply(
+            lambda r: ", ".join(r[:8]) + (f" +{len(r) - 8} more" if len(r) > 8 else "") if isinstance(r, list) else ""
+        ),
+        n_stops=shown["n_stops"].fillna(0).astype(int),
+        status_order=(shown["status"] != "Active now").astype(int),
+        period_sort=shown["period_start"].fillna(pd.Timestamp.min.tz_localize("UTC")),
+    ).sort_values(["status_order", "category", "period_sort"])
+    st.dataframe(
+        table[["status", "category", "header_text", "when", "routes", "n_stops"]].rename(
+            columns={
+                "status": "Status", "category": "Type", "header_text": "Alert", "when": "When (Brisbane time)",
+                "routes": "Routes affected", "n_stops": "Stops affected",
+            }
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.caption(
+        "From Translink's GTFS-Realtime service alerts, latest poll. Track closures are drawn along the "
+        "affected lines; stop closures, detours and lift outages at the affected stops. 'When' is the "
+        "current period for active alerts and the next one for upcoming ones (some repeat nightly). A track "
+        "closure is drawn along the whole named line; the alert text says which section is closed. Alerts "
+        "without a stop or mappable line appear in the table only."
+    )
+
+
 # ── Live map ────────────────────────────────────────────────────────────
 
 with tab_map:
     map_mode = st.radio(
         "View",
-        ["🚍 Vehicles right now", "🔥 Delay hotspots (all stops)"],
+        ["🚍 Vehicles right now", "🔥 Delay hotspots (all stops)", "🚧 Closures & works"],
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -757,7 +1051,7 @@ with tab_map:
                 "late right now. Hover any dot for its route and live delay.",
                 kind="warn" if pct_late > 20 else "",
             )
-    else:
+    elif map_mode == "🔥 Delay hotspots (all stops)":
         hot = load_stop_delay_geo()
         if hot.empty:
             st.info("Not enough stop-level data yet.")
@@ -793,6 +1087,9 @@ with tab_map:
             "Every stop with ≥8 tracked visits, colored by its own average arrival delay. Intersection-level "
             "congestion isn't mapped yet — the BCC feed doesn't carry lat/lon, only a signal-controller ID."
         )
+
+    else:
+        render_closures()
 
 # ── Live delays ─────────────────────────────────────────────────────────
 
