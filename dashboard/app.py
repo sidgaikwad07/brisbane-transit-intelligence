@@ -1106,24 +1106,29 @@ with tab_traffic:
         if trend.empty:
             st.info("Traffic poller has just started — trend will fill in over the next few polls.")
         else:
+            # One trace per unbroken stretch, so collection gaps (API outages,
+            # quota lockouts) show as gaps rather than a straight line and fill
+            # bridging minutes with no data.
+            segment = (trend["recorded_at"].diff() > pd.Timedelta(minutes=10)).cumsum()
             fig = go.Figure()
-            fig.add_trace(
-                go.Scatter(
-                    x=trend["recorded_at"],
-                    y=trend["avg_peak_saturation"],
-                    mode="lines",
-                    line=dict(color="#3ea6ff", width=2),
-                    fill="tozeroy",
-                    fillcolor="rgba(62,166,255,0.08)",
+            for _, part in trend.groupby(segment):
+                fig.add_trace(
+                    go.Scatter(
+                        x=part["recorded_at"],
+                        y=part["avg_peak_saturation"],
+                        mode="lines",
+                        line=dict(color="#3ea6ff", width=2),
+                        fill="tozeroy",
+                        fillcolor="rgba(62,166,255,0.08)",
+                    )
                 )
-            )
             style_fig(fig, height=300, showlegend=False)
             fig.update_layout(yaxis_title="Avg peak-lane saturation (%)", xaxis_title=None)
             st.plotly_chart(fig, use_container_width=True)
         st.caption(
             "Degree of saturation on each intersection's busiest approach lane, averaged citywide. "
             "The BCC feed is a rolling ~5-minute window with no history, so this trend only covers "
-            "time since the poller started."
+            "time since the poller started. Breaks in the line are gaps in collection."
         )
 
         st.subheader("Congestion right now, all intersections")
