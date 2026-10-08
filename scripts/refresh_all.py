@@ -34,6 +34,10 @@ DBT_DIR = REPO_ROOT / "dbt"
 VENV_PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
 
 PIPELINE = [
+    # Weather isn't polled like transit/traffic; it's an idempotent upsert of
+    # Open-Meteo's daily history, so it must run here or the delay model's
+    # weather features go stale (they did: stuck at 25 Sep until 8 Oct).
+    "-m ingestion.weather",
     "notebooks/network_summary.py",
     "notebooks/realtime_summary.py",
     "notebooks/demand_intelligence.py",
@@ -83,7 +87,10 @@ def run_script(rel_path: str) -> tuple[str, bool, float]:
     python = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
     env = {**_env(), "SKIP_DBT_REFRESH": "1"}
     start = time.monotonic()
-    result = subprocess.run([python, rel_path], cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False)
+    # "-m package.module" entries run as modules (for ingestion/*, which
+    # import `ingestion.config` and so can't run as plain script paths).
+    args = rel_path.split() if rel_path.startswith("-m ") else [rel_path]
+    result = subprocess.run([python, *args], cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False)
     elapsed = time.monotonic() - start
     print(result.stdout[-1500:])
     ok = result.returncode == 0
