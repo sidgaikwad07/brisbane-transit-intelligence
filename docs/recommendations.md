@@ -92,7 +92,7 @@ site visit, not just "add more buses."
 
 **Finding:** [`docs/delay_model_card.md`](delay_model_card.md) — an XGBoost delay-prediction
 model trained on about two weeks of real traffic, weather and delay data still **doesn't beat a
-naive baseline** on a fair (time-based) evaluation (272s mean error against 258s). Daily average
+naive baseline** on a fair (time-based) evaluation (278s mean error against 258s). Daily average
 delay swings widely (from about 50s to 190s), collection had gaps, and the test days included a
 public holiday the features can't represent. A diagnostic random split confirms the features
 (route, hour, congestion, disruption-alert count) do carry real signal.

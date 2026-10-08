@@ -17,3 +17,6 @@ dbt/.user.yml
 *.log
 logs/
 .worktrees/
+
+# Local screenshots/exports for social posts (regenerable)
+linkedin/

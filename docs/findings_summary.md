@@ -69,14 +69,16 @@ Source: [`weekend_frequency_gap.md`](weekend_frequency_gap.md).
 
 I trained XGBoost models to predict delay from route, time, nearby traffic, weather and active
 disruption alerts. On a fair time-based split, using about two weeks of data, they still **don't
-beat a naive baseline** (272s mean absolute error against 258s; ROC-AUC 0.62 for "more than five
+beat a naive baseline** (278s mean absolute error against 258s; ROC-AUC 0.61 for "more than five
 minutes late"). That's closer than the first run on three and a half days (435s against 258s),
 when a strike disrupted the training days but not the test days. The remaining problem is that
 average delay swings a lot from one day to the next (from about 50s to 190s), and the model has
 nothing that predicts those swings. The test days included the King's Birthday public holiday,
 which the model treats as an ordinary Monday. On a random split, where both sets cover the same
 days, the same features beat the baseline (ROC-AUC 0.84). So the features carry signal; what's
-missing is more days, fewer gaps, and calendar features such as holidays.
+missing is more days, fewer gaps, and calendar features such as holidays. Weather didn't help: weather data had
+stopped updating on 25 September, and backfilling it made the error slightly worse (278s, from
+272s without it), so there's no detectable weather effect in this window.
 
 Collection also had gaps. Until 4 October the traffic poller kept hitting the council API's
 daily limit and missed most morning peaks, and a database outage stopped all collection from 6

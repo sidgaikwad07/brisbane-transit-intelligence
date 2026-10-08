@@ -43,6 +43,21 @@ CAUSE_COLORS = {
     "OTHER_CAUSE": "#5b6472",
 }
 BRISBANE_CENTER = {"lat": -27.4698, "lon": 153.0251}
+# Carto's free raster basemap (Plotly's "carto-darkmatter") now serves an
+# "API key required" placeholder, and the newer px.scatter_map isn't supported
+# by Streamlit's bundled plotly.js, so the maps draw Esri's keyless dark canvas
+# tiles as a raster layer instead.
+DARK_BASEMAP_LAYERS = [
+    {
+        "below": "traces",
+        "sourcetype": "raster",
+        "sourceattribution": "Esri, HERE, Garmin, © OpenStreetMap contributors",
+        "source": [
+            "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/"
+            "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+        ],
+    }
+]
 TIME_BLOCK_ORDER = [
     "Weekday (12:00am-8:29:59am)",
     "Weekday (8:30am-2:59:59pm)",
@@ -147,6 +162,9 @@ def style_fig(fig: go.Figure, height: int = 380, showlegend: bool | None = None)
         margin=dict(t=45, b=10, l=10, r=10),
         legend=dict(bgcolor="rgba(0,0,0,0)"),
         hoverlabel=dict(bgcolor="#161b22", font_size=12),
+        # Route names like "561" are text, not numbers; without this Plotly
+        # converts them and draws a numeric axis that drops "SMBI", "F11" etc.
+        autotypenumbers="strict",
     )
     if showlegend is not None:
         layout_kwargs["showlegend"] = showlegend
@@ -154,6 +172,11 @@ def style_fig(fig: go.Figure, height: int = 380, showlegend: bool | None = None)
     fig.update_xaxes(gridcolor="rgba(255,255,255,0.07)", zerolinecolor="rgba(255,255,255,0.15)")
     fig.update_yaxes(gridcolor="rgba(255,255,255,0.07)", zerolinecolor="rgba(255,255,255,0.15)")
     return fig
+
+
+def ordinal(n: int) -> str:
+    suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 
 def classify_delay(delay_sec) -> str:
@@ -328,7 +351,7 @@ def load_traffic_trend(hours: int = 6) -> pd.DataFrame:
         ORDER BY 1
         """,
         engine,
-    )
+    ).assign(recorded_at=lambda d: pd.to_datetime(d["recorded_at"], utc=True).dt.tz_convert("Australia/Brisbane"))
 
 
 @st.cache_data(ttl=CACHE_TTL_FAST)
@@ -719,10 +742,11 @@ with tab_map:
                 hover_data={"mode": True, "speed": ":.0f", "arrival_delay_sec": True, "latitude": False, "longitude": False},
                 zoom=9.6,
                 center=BRISBANE_CENTER,
-                mapbox_style="carto-darkmatter",
+                mapbox_style="white-bg",
             )
             fig.update_traces(marker=dict(size=9, opacity=0.85))
             style_fig(fig, height=560)
+            fig.update_layout(mapbox_layers=DARK_BASEMAP_LAYERS)
             fig.update_layout(legend=dict(orientation="h", y=0.02, x=0.01, bgcolor="rgba(13,17,23,0.6)"))
             st.plotly_chart(fig, use_container_width=True)
 
@@ -751,10 +775,11 @@ with tab_map:
                 hover_data={"avg_delay_sec": ":.0f", "n_visits": True, "stop_lat": False, "stop_lon": False},
                 zoom=9.6,
                 center=BRISBANE_CENTER,
-                mapbox_style="carto-darkmatter",
+                mapbox_style="white-bg",
             )
             fig.update_traces(marker=dict(opacity=0.75))
             style_fig(fig, height=560)
+            fig.update_layout(mapbox_layers=DARK_BASEMAP_LAYERS)
             fig.update_coloraxes(colorbar=dict(title="Avg delay (s)", bgcolor="rgba(0,0,0,0)"))
             st.plotly_chart(fig, use_container_width=True)
 
@@ -1059,8 +1084,9 @@ with tab_priority:
         top = priority_f.sort_values("priority_score", ascending=False).iloc[0]
         insight(
             f"<b>Route {top['route']}</b> ({top['route_long_name']}) tops the priority list: "
-            f"{top['avg_weekday_riders']:.0f} riders/weekday at the {top['demand_pctile']:.0f}th percentile of "
-            f"demand, but only {top['on_time_pct']:.0f}% on-time ({top['otp_pctile']:.0f}th percentile of "
+            f"{top['avg_weekday_riders']:,.0f} riders/weekday at the {ordinal(round(top['demand_pctile']))} "
+            f"percentile of demand, but only {top['on_time_pct']:.0f}% on-time "
+            f"({ordinal(round(top['otp_pctile']))} percentile of "
             "reliability, citywide)."
         )
 
@@ -1143,8 +1169,8 @@ with tab_traffic:
                     "worth checking against that day's on-time performance once the delay-prediction model is built."
                 )
         st.caption(
-            "Daily Brisbane observations from Open-Meteo. Feeds the delay-prediction model once "
-            "it's built (next step)."
+            "Daily Brisbane observations from Open-Meteo, also used as features in the "
+            "delay-prediction model."
         )
 
 st.divider()
