@@ -141,8 +141,6 @@ def pr_body(date: str, ingest_results, refresh_ok: bool, refresh_summary: str, d
         "```",
         diffstat.strip(),
         "```",
-        "",
-        "🤖 Generated with [Claude Code](https://claude.com/claude-code)",
     ]
     return "\n".join(lines)
 
