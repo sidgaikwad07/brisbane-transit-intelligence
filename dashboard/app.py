@@ -674,7 +674,8 @@ def load_live_delays(minutes: int = 15) -> pd.DataFrame:
         SELECT tu.route_id, r.route_short_name AS route, r.mode,
                tu.arrival_delay_sec, tu.trip_id, tu.stop_id, tu.polled_at
         FROM raw.trip_updates tu
-        JOIN staging.stg_routes r ON r.route_id = tu.route_id
+        JOIN staging.stg_routes_by_short_name r
+        ON r.route_short_name = regexp_replace(tu.route_id, '-[^-]*$', '')
         WHERE tu.polled_at > NOW() - INTERVAL '{minutes} minutes' AND tu.arrival_delay_sec IS NOT NULL
         ORDER BY tu.arrival_delay_sec DESC
         LIMIT 5000
@@ -705,7 +706,8 @@ def load_live_vehicle_map() -> pd.DataFrame:
         SELECT vp.vehicle_id, vp.trip_id, r.route_short_name AS route, r.mode,
                vp.latitude, vp.longitude, vp.speed, ld.arrival_delay_sec
         FROM vp
-        JOIN staging.stg_routes r ON r.route_id = vp.route_id
+        JOIN staging.stg_routes_by_short_name r
+        ON r.route_short_name = regexp_replace(vp.route_id, '-[^-]*$', '')
         LEFT JOIN latest_delay ld ON ld.trip_id = vp.trip_id
         WHERE vp.latitude IS NOT NULL AND vp.longitude IS NOT NULL
         """,

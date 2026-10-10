@@ -6,19 +6,19 @@ Raised as a specific question: a resident of the Manly/Lota/Cleveland corridor (
 
 Headway (average minutes between departures, estimated as each time-of-day window's length divided by how many scheduled departures fall in it — see note below on why not a raw gap average) at the corridor's **inbound, city-bound** rail platform (Manly station, platform 1 — Lota station matches closely, same line) and its busiest inbound bus stop (Manly Rd at Silky Oaks, routes toward the City/Fortitude Valley), split into five time-of-day windows, on three representative dates chosen the same way as the main network summary (`ingestion/service_calendar.py` — the date, among all dates of that weekday type in the feed, whose total scheduled-trip count is closest to the median):
 
-- Weekday: **Thursday, 17 September 2026**
-- Saturday: **Saturday, 17 October 2026**
-- Sunday: **Sunday, 18 October 2026**
+- Weekday: **Thursday, 29 October 2026**
+- Saturday: **Saturday, 07 November 2026**
+- Sunday: **Sunday, 08 November 2026**
 
 ## Rail: Cleveland Line at Manly station (inbound)
 
 | Time of day | Weekday | Saturday | Sunday |
 |---|---|---|---|
-| AM peak | every 14 min | every 30 min | every 30 min |
+| AM peak | every 13 min | every 30 min | every 30 min |
 | Midday | every 30 min | every 30 min | every 30 min |
 | PM peak | every 15 min | every 30 min | every 30 min |
 | Evening | every 21 min | every 30 min | every 30 min |
-| Night/early | every 69 min | every 60 min | every 160 min |
+| Night/early | every 60 min | every 60 min | every 160 min |
 
 ![Cleveland Line headway at Manly station, weekday vs Saturday vs Sunday](images/manly_lota_headway.png)
 
@@ -52,7 +52,7 @@ Until now this case study relied entirely on the *schedule* — it could show ho
 | 220 (Wynnum - City Express) | 1,083 | 31 | 34.9 | 93rd |
 | 251 (Ormiston - Brisbane City) | 206 | 8 | 25.7 | 76th |
 | 221 (Wynnum - City Rocket) | 164 | 7 | 23.5 | 71st |
-| 275 (Thornlands - Brisbane City via Finucane Rd) | 173 | 8 | 21.7 | 66th |
+| 275 (Thornlands - Brisbane City via Finucane Rd) | 173 | 8 | 21.7 | 65th |
 | 224 (Wynnum Loop Anti-Clockwise) | 178 | 12 | 14.8 | 50th |
 | 223 (Wynnum Loop Clockwise) | 160 | 12 | 13.4 | 47th |
 | 274 (Victoria Pt Jetty - Cleveland via Thornlands) | 222 | 25 | 8.9 | 29th |
@@ -73,13 +73,13 @@ Route circuity (actual path length ÷ straight-line distance between the route's
 | 220 (Wynnum - City Express) | 29 km | 2.04x |
 | 227 (Wynnum - City) | 22 km | 1.75x |
 | 221 (Wynnum - City Rocket) | 27 km | 1.75x |
-| 273 (Cleveland - Brisbane City via Redland Bay Rd) | 38 km | 1.62x |
-| 240 (Capalaba - Wynnum) | 14 km | 1.59x |
-| 254 (Capalaba - Wellington Point) | 9 km | 1.57x |
+| 273 (Cleveland - Brisbane City via Redland Bay Rd) | 38 km | 1.63x |
 | 251 (Ormiston - Brisbane City) | 36 km | 1.57x |
+| 254 (Capalaba - Wellington Point) | 9 km | 1.57x |
+| 240 (Capalaba - Wynnum) | 13 km | 1.56x |
 | 275 (Thornlands - Brisbane City via Finucane Rd) | 37 km | 1.43x |
 
-Citywide median circuity across 408 sampled bus routes is **1.79x** — Brisbane's bus network is generally quite circuitous (suburban coverage-oriented routing, not a corridor-specific issue). Routes 220 and 227 (the two busiest, above) sit close to or right at that citywide median, not in the unusually-long tail. The Cleveland-area routes (255, 274) run somewhat higher than typical, but not to an extreme degree. **The "route is too long" complaint is real in absolute terms (a 20-30km path for what could be a much shorter direct line) but isn't a Manly/Lota/Cleveland-specific design failure** — it's a symptom of how Brisbane's whole bus network prioritises coverage over directness, same conclusion shape as the weekend-headway finding above.
+Citywide median circuity across 422 sampled bus routes is **1.74x** — Brisbane's bus network is generally quite circuitous (suburban coverage-oriented routing, not a corridor-specific issue). Routes 220 and 227 (the two busiest, above) sit close to or right at that citywide median, not in the unusually-long tail. The Cleveland-area routes (255, 274) run somewhat higher than typical, but not to an extreme degree. **The "route is too long" complaint is real in absolute terms (a 20-30km path for what could be a much shorter direct line) but isn't a Manly/Lota/Cleveland-specific design failure** — it's a symptom of how Brisbane's whole bus network prioritises coverage over directness, same conclusion shape as the weekend-headway finding above.
 
 ## What this actually recommends
 

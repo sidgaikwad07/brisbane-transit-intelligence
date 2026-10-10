@@ -81,7 +81,9 @@ stop_traffic_bucketed AS (
 )
 SELECT
     sd.trip_id,
-    sd.route_id,
+    -- Route number, not the versioned route_id: a new timetable version
+    -- (new suffix) would otherwise look like a route the model never saw.
+    regexp_replace(sd.route_id, '-[^-]*$', '') AS route_id,
     r.mode,
     sd.stop_id,
     sd.arrival_delay_sec,
@@ -96,7 +98,8 @@ SELECT
     w.wind_kph,
     COALESCE(da.n_disruption_alerts, 0) AS n_disruption_alerts
 FROM marts.mart_stop_delay sd
-JOIN staging.stg_routes r ON r.route_id = sd.route_id
+JOIN staging.stg_routes_by_short_name r
+        ON r.route_short_name = regexp_replace(sd.route_id, '-[^-]*$', '')
 LEFT JOIN stop_traffic_bucketed stt
     ON stt.stop_id = sd.stop_id
    AND stt.time_bucket = date_trunc('hour', sd.scheduled_arrival AT TIME ZONE 'Australia/Brisbane')

@@ -72,9 +72,14 @@ def trip_counts_by_date(
 # Extended GTFS route_types that are temporary or seasonal by definition,
 # so their timetable ending early isn't a sign of an incomplete feed.
 NON_REGULAR_ROUTE_TYPES = (
+    205,  # special coach service — one-off charters, no regular pattern
     712,  # school bus — stops for school holidays
     714,  # rail replacement bus — runs only around planned trackwork
 )
+
+
+COMPLETE_SHARE_OF_PEAK = 0.85
+INCOMPLETE_RUN_DAYS = 14
 
 
 def complete_schedule_end(
@@ -89,9 +94,16 @@ def complete_schedule_end(
     after that only ~170 of ~3,200 daily rail trips remain. Picking a
     "typical" date from the whole span then silently drops an entire mode.
 
+    Melbourne showed a subtler version: one bus operator publishing only to
+    the end of October cut Sunday bus trips by ~20%, not to zero, and a
+    November Sunday got picked as "typical".
+
     `trips_per_service_type` has columns service_id, route_type, n. A mode's
-    timetable counts as complete on a date while its daily trip count is at
-    least half its peak. Temporary/seasonal modes (NON_REGULAR_ROUTE_TYPES)
+    timetable counts as complete on a date while its trip count is at least
+    85% of that mode's peak for the same day of the week (Sundays are
+    compared with Sundays, since normal Sunday service is far below a
+    weekday's). The schedule ends where any mode stays incomplete for two
+    weeks or more. Temporary/seasonal modes (NON_REGULAR_ROUTE_TYPES)
     are ignored. Rules based on the counts alone can't tell them apart:
     Sydney Trains, complete for one month of three, looks just as
     "temporary" as a weekend of rail-replacement buses.
@@ -107,9 +119,25 @@ def complete_schedule_end(
             for d in dates
         }
     ).T.fillna(0)
-    peak = daily.max()
+    weekday = pd.Index([d.weekday() for d in daily.index], name="weekday")
+    peak_for_weekday = daily.groupby(weekday.values).transform("max")
+    peak_for_weekday.index = daily.index
     regular = [rt for rt in daily.columns if rt not in NON_REGULAR_ROUTE_TYPES]
-    return min(daily.index[daily[rt] >= 0.5 * peak[rt]].max() for rt in regular)
+    complete = daily[regular] >= COMPLETE_SHARE_OF_PEAK * peak_for_weekday[regular]
+    return min(_end_before_sustained_gap(complete[rt]) for rt in regular)
+
+
+def _end_before_sustained_gap(complete: pd.Series) -> dt.date:
+    """The day before the first run of INCOMPLETE_RUN_DAYS or more incomplete
+    days, or the last date if there's no such run. A single short dip (a
+    public holiday) doesn't end the schedule; a timetable that has run out
+    does, even if the feed has service again later (Melbourne's buses
+    reappear for Christmas week)."""
+    values = complete.to_numpy()
+    for i in range(len(values) - INCOMPLETE_RUN_DAYS + 1):
+        if not values[i : i + INCOMPLETE_RUN_DAYS].any():
+            return complete.index[max(i - 1, 0)]
+    return complete.index[-1]
 
 
 def pick_representative_date(

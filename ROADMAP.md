@@ -98,6 +98,24 @@ not just code — the goal is a working artifact at every checkpoint.
   service alerts, each marked active now or upcoming. Needed a new `raw.service_alert_periods`
   table (the poller had been dropping each alert's active period, so a closure scheduled for
   next weekend looked current) and a BRIN index on `raw.service_alerts.polled_at`.
+- [x] **Timetable reload (2026-10-10)** — all three cities' static feeds reloaded (Brisbane's
+  was from 17 Sep; the 5 Oct weekly refresh had failed). It exposed three problems, all fixed:
+  - Live data was joined to routes on the versioned `route_id` (`412-5065`). The new feed only
+    has current versions, so two-thirds of three weeks of stop visits silently dropped out.
+    Live data now joins on the route number (`dbt/macros/route_short_name.sql`), recovering
+    99.6%; the delay model's route feature uses it too.
+  - `mart_stop_delay` ran the Docker volume out of disk (a ~9GB sort spill). Rewritten as a
+    latest-poll aggregate plus per-row index lookups (2.5 min, verified equivalent).
+  - Melbourne's chosen comparison days fell after one bus operator's timetable ends (Nov),
+    understating Melbourne's buses ~20% — including in the earlier published numbers.
+    `complete_schedule_end` now compares each day with the same weekday's peak (85%) and stops
+    at the first two-week gap. Melbourne's figures rose (frequent 32% -> 35%), so Brisbane's gap
+    to Melbourne is ~362K residents, not 282K.
+- [ ] **Database disk:** the Docker volume has ~8.7GB free and grows ~1GB/day, mostly
+  `raw.trip_updates` (19GB) and `raw.service_alerts` (8GB of repeated alerts). Needs either a
+  bigger Docker disk or pruning/aggregating old raw polls.
+- [ ] **Collection gaps from laptop sleep** (on battery) — keep it plugged in with sleep
+  disabled, or wrap the pollers in `caffeinate`.
 - [ ] README pass, architecture diagram finalized
 - [ ] Screen-recorded demo (GIF/video) for LinkedIn
 - [x] Write-up: [`docs/findings_summary.md`](docs/findings_summary.md) — four headline findings

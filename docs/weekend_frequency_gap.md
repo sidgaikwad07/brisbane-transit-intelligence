@@ -1,6 +1,6 @@
 # Why on-time performance doesn't show the weekend gap
 
-A fair challenge to the numbers in `docs/week2_findings.md`: weekday on-time performance (66.3%) and weekend (70.7%) are only 4.4 points apart. If weekend service is really that much worse, why doesn't the headline number show it?
+A fair challenge to the numbers in `docs/week2_findings.md`: weekday on-time performance (66.2%) and weekend (70.6%) are only 4.4 points apart. If weekend service is really that much worse, why doesn't the headline number show it?
 
 Because on-time performance and service existence measure genuinely different things, and OTP is blind to the one that actually differs most. OTP asks *"did the trips that were scheduled arrive close to their scheduled time"* — a route running once every 30 minutes, dead on schedule every time, scores 100%. It says nothing about whether that route, or dozens of others, exist on the timetable at all that day.
 
@@ -8,24 +8,24 @@ Because on-time performance and service existence measure genuinely different th
 
 ![The weekday/weekend gap on-time performance alone doesn't show](images/weekend_frequency_gap.png)
 
-- **20,853 scheduled trips** on a weekday (Thursday, 17 September 2026), across **494 distinct routes**
-- **Saturday: 13,002 trips** (38% fewer), across only **364 routes**
-- **Sunday: 11,149 trips** (47% fewer), across only **332 routes**
+- **20,760 scheduled trips** on a weekday (Thursday, 29 October 2026), across **490 distinct routes**
+- **Saturday: 13,002 trips** (37% fewer), across only **364 routes**
+- **Sunday: 11,149 trips** (46% fewer), across only **332 routes**
 
-**149 routes that run on a weekday have zero Saturday service**, carrying **3,439,045 weekday riders** (7.4% of all weekday ridership). **181 routes have zero Sunday service**, carrying **4,429,688 weekday riders** (9.5%). This is the actual weekend gap — not a route running less often, a route not existing on the weekend timetable at all — and it's invisible to on-time performance by construction: a route that doesn't run can't be measured as late or early.
+**144 routes that run on a weekday have zero Saturday service**, carrying **3,430,496 weekday riders** (7.4% of all weekday ridership). **176 routes have zero Sunday service**, carrying **4,421,139 weekday riders** (9.5%). This is the actual weekend gap — not a route running less often, a route not existing on the weekend timetable at all — and it's invisible to on-time performance by construction: a route that doesn't run can't be measured as late or early.
 
 ## Finding 2: among the routes that do keep running, headway is roughly similar
 
 For each route, average wait for a random arrival ≈ half its average headway, derived from that route's own actual scheduled span (first to last departure ÷ trip count), weighted by real ridership so busy routes count more than quiet ones. This deliberately **excludes** the routes in Finding 1 (no span exists for a route with zero trips), so it answers a narrower question: *for a rider whose route still runs on weekends, how much longer do they wait?*
 
-- Weekday: **7.8 minutes** average expected wait (442 routes)
+- Weekday: **7.8 minutes** average expected wait (441 routes)
 - Weekend: **7.7 minutes** average expected wait (329 routes)
 
 Surprisingly close — the routes that survive onto the weekend timetable (largely the busiest ones, since low-ridership routes are exactly the ones likeliest to be cut entirely) tend to keep something close to their weekday frequency. **The weekend problem is concentrated in which routes exist, not primarily in how often the survivors run** — the opposite emphasis from the Manly/Lota case study, where the *specific* corridor examined does keep running on weekends but at a much-reduced flat 30-minute rail headway. Both are real; they're just different failure modes on different parts of the network.
 
 ## Reconciling this with the OTP numbers
 
-All three findings are true at once: weekday and weekend on-time performance are close (66.3% vs 70.7%) because OTP only measures the trips that exist; a real chunk of the network (~10% of weekday ridership on Sundays) has zero weekend service at all; and among routes that do survive, frequency holds up better than expected. **Reliability, frequency, and existence are three different axes** — this project's early framing (`docs/manly_lota_service_gap.md`) already separated reliability from frequency for one corridor; this confirms coverage is a third, distinct axis at the network level.
+All three findings are true at once: weekday and weekend on-time performance are close (66.2% vs 70.6%) because OTP only measures the trips that exist; a real chunk of the network (~10% of weekday ridership on Sundays) has zero weekend service at all; and among routes that do survive, frequency holds up better than expected. **Reliability, frequency, and existence are three different axes** — this project's early framing (`docs/manly_lota_service_gap.md`) already separated reliability from frequency for one corridor; this confirms coverage is a third, distinct axis at the network level.
 
 ## Method & caveats
 
