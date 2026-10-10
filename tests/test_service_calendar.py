@@ -97,6 +97,47 @@ def test_complete_schedule_end_stops_where_one_mode_runs_out():
     assert complete_schedule_end(calendar, calendar_dates, trips) == dt.date(2026, 10, 28)
 
 
+def test_complete_schedule_end_catches_a_partial_drop():
+    # Melbourne's real shape: one bus operator's timetable stops at the end of
+    # October, so bus trips fall ~20% (not to zero) from November.
+    calendar = pd.DataFrame(
+        [
+            _calendar_row("bus_a", dt.date(2026, 10, 1), dt.date(2026, 12, 31), "1111111"),
+            _calendar_row("bus_b", dt.date(2026, 10, 1), dt.date(2026, 10, 31), "1111111"),
+            _calendar_row("tram", dt.date(2026, 10, 1), dt.date(2026, 12, 31), "1111111"),
+        ]
+    )
+    calendar_dates = pd.DataFrame(columns=["service_id", "date", "exception_type"])
+    trips = pd.DataFrame(
+        [
+            {"service_id": "bus_a", "route_type": 3, "n": 800},
+            {"service_id": "bus_b", "route_type": 3, "n": 200},
+            {"service_id": "tram", "route_type": 0, "n": 300},
+        ]
+    )
+
+    assert complete_schedule_end(calendar, calendar_dates, trips) == dt.date(2026, 10, 31)
+
+
+def test_complete_schedule_end_judges_sundays_against_sundays():
+    # Sunday service at ~40% of weekday is normal, not a truncated timetable.
+    calendar = pd.DataFrame(
+        [
+            _calendar_row("weekday", dt.date(2026, 10, 1), dt.date(2026, 12, 31), "1111110"),
+            _calendar_row("sunday", dt.date(2026, 10, 1), dt.date(2026, 12, 31), "0000001"),
+        ]
+    )
+    calendar_dates = pd.DataFrame(columns=["service_id", "date", "exception_type"])
+    trips = pd.DataFrame(
+        [
+            {"service_id": "weekday", "route_type": 3, "n": 1000},
+            {"service_id": "sunday", "route_type": 3, "n": 400},
+        ]
+    )
+
+    assert complete_schedule_end(calendar, calendar_dates, trips) == dt.date(2026, 12, 31)
+
+
 def test_pick_representative_date_respects_end():
     calendar = pd.DataFrame([_calendar_row("weekday", dt.date(2026, 10, 1), dt.date(2026, 12, 31))])
     calendar_dates = pd.DataFrame(columns=["service_id", "date", "exception_type"])

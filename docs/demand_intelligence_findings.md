@@ -16,7 +16,7 @@ Source: [TransLink Origin-Destination Trips](https://www.data.qld.gov.au/dataset
 
 ## Real demand vs. scheduled supply, by route
 
-Actual average weekday riders per route (from the OD data, divided by 66 weekdays in May 2026, June 2026, July 2026) against scheduled trips on **Thursday, 17 September 2026** (the same representative-weekday methodology as `docs/week1_findings.md`). `riders_per_scheduled_trip` is the number nothing else in this repo could produce before now — real demand pressure per scheduled service, not a frequency or on-time-performance proxy for it.
+Actual average weekday riders per route (from the OD data, divided by 66 weekdays in May 2026, June 2026, July 2026) against scheduled trips on **Thursday, 29 October 2026** (the same representative-weekday methodology as `docs/week1_findings.md`). `riders_per_scheduled_trip` is the number nothing else in this repo could produce before now — real demand pressure per scheduled service, not a frequency or on-time-performance proxy for it.
 
 ![Busiest routes by real ridership](images/demand_vs_supply.png)
 
@@ -34,7 +34,7 @@ Actual average weekday riders per route (from the OD data, divided by 66 weekday
 | 140 | Bus | 7,349 | 151 | 49 |
 | 196 | Bus | 7,245 | 162 | 45 |
 | 412 | Bus | 7,187 | 232 | 31 |
-| 100 | Bus | 6,748 | 165 | 41 |
+| 100 | Bus | 6,748 | 163 | 41 |
 | 333 | Bus | 6,583 | 178 | 37 |
 | 555 | Bus | 6,201 | 141 | 44 |
 | 700 | Bus | 6,169 | 231 | 27 |

@@ -56,7 +56,8 @@ def gather(engine) -> dict:
                (extract(dow from sd.scheduled_arrival at time zone 'Australia/Brisbane') in (0, 6))
                    AS is_weekend
         FROM marts.mart_stop_delay sd
-        JOIN staging.stg_routes r ON r.route_id = sd.route_id
+        JOIN staging.stg_routes_by_short_name r
+        ON r.route_short_name = regexp_replace(sd.route_id, '-[^-]*$', '')
         WHERE sd.arrival_delay_sec IS NOT NULL AND sd.scheduled_arrival IS NOT NULL
         """,
         engine,
@@ -235,7 +236,9 @@ def build_dashboard(data: dict) -> None:
     ax_demand = fig.add_subplot(gs[2, 2:])
     top_routes = data["priority_df"].sort_values("avg_weekday_riders", ascending=False).head(8).iloc[::-1]
     colors = [MODE_COLORS.get(m, "#898781") for m in top_routes["mode"]]
-    ax_demand.barh(top_routes["route"], top_routes["avg_weekday_riders"], color=colors, height=0.6, zorder=3)
+    # "Tram/Light Rail (network)" is too long for the axis and runs into its bar.
+    labels = top_routes["route"].replace({"Tram/Light Rail (network)": "Light rail (network)"})
+    ax_demand.barh(labels, top_routes["avg_weekday_riders"], color=colors, height=0.6, zorder=3)
     ax_demand.set_xlabel("Avg weekday riders", fontsize=9, color=INK_SECONDARY)
     ax_demand.grid(axis="x", color=GRIDLINE, linewidth=1, zorder=0)
     ax_demand.set_axisbelow(True)

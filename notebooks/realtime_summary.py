@@ -86,7 +86,8 @@ STOP_DELAY_SQL = """
         -- can belong to the next day's early service.
         (extract(dow from sd.scheduled_arrival at time zone 'Australia/Brisbane') in (0, 6)) AS is_weekend
     FROM marts.mart_stop_delay sd
-    JOIN staging.stg_routes r ON r.route_id = sd.route_id
+    JOIN staging.stg_routes_by_short_name r
+        ON r.route_short_name = regexp_replace(sd.route_id, '-[^-]*$', '')
     WHERE sd.arrival_delay_sec IS NOT NULL AND sd.scheduled_arrival IS NOT NULL
 """
 

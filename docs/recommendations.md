@@ -26,11 +26,11 @@ fixes and are currently invisible to each other in a single on-time-performance 
 
 **Finding:** [`docs/priority_routes_findings.md`](priority_routes_findings.md) —
 **SMBI (Southern Moreton Bay Islands ferry)** is the single highest-priority route citywide:
-99th-percentile demand pressure (5,208 riders/weekday), running on-time only 33% of the time
-(2nd-percentile reliability). Network-wide, ferry on-time performance is **33% on weekdays and
-43% at weekends** ([`docs/week2_findings.md`](week2_findings.md)), far worse than bus (64-70%),
-rail (84-86%) or tram (99-100%). Five of the network's eight least punctual routes are ferries
-(F23, F24, F50, F22, F21), and they miss by running **early**, not late: 73-91% of their stop
+99th-percentile demand pressure (5,208 riders/weekday), running on-time only 30% of the time
+(2nd-percentile reliability). Network-wide, ferry on-time performance is **35% on weekdays and
+40% at weekends** ([`docs/week2_findings.md`](week2_findings.md)), far worse than bus (64-69%),
+rail (85-87%) or tram (100%). Five of the network's eight least punctual routes are ferries
+(F23, F50, F24, F22, F21), and they miss by running **early**, not late: 73-90% of their stop
 visits are more than a minute ahead of the timetable.
 
 **Recommendation:** Ferry reliability warrants its own dedicated investigation, independent of
@@ -42,20 +42,20 @@ It affects a captive ridership with limited alternatives, especially to the bay 
 
 **Finding:** [`docs/priority_routes_findings.md`](priority_routes_findings.md) lists the
 network's top 15 routes by `demand percentile × unreliability percentile`. After the SMBI, F11
-and F1 ferries, it's a cluster of bus routes (561, 443, 546, 581, 141, 577, 357, 281, 551, 431,
-569, 426) running at **25-56% on-time while sitting in the top seventh of the network for demand
-pressure**. Many are Logan-corridor services (546, 551, 561, 569, 577, 581) and city "Rocket" or
-express routes (141, 357, 426, 431, 443).
+and F1 ferries, it's a cluster of bus routes (443, 546, 551, 561, 141, 581, 573, 431, 357, 577,
+426, 186) running at **30-53% on-time while sitting in the top fifth of the network for demand
+pressure**. Most are Logan-corridor services (546, 551, 561, 573, 577, 581) or city "Rocket" and
+express routes (141, 186, 357, 426, 431, 443).
 
 **Recommendation:** This is a ready-made, ranked, demand-weighted worklist — not a hypothesis
-that needs more research to be actionable. Route 546 alone carries 684 riders/weekday at 25%
+that needs more research to be actionable. Route 546 alone carries 684 riders/weekday at 30%
 on-time.
 
 ### 4. Rail and tram are already reliable — don't spend reliability budget there
 
-**Finding:** [`docs/week2_findings.md`](week2_findings.md) — rail runs on-time 84-86% of the
-time, tram/light rail 99-100%, both essentially flat between weekday and weekend. Bus (64-70%)
-and ferry (33-43%) are where the network's reliability problem actually lives.
+**Finding:** [`docs/week2_findings.md`](week2_findings.md) — rail runs on-time 85-87% of the
+time, tram/light rail 100%, both essentially flat between weekday and weekend. Bus (64-69%)
+and ferry (35-40%) are where the network's reliability problem actually lives.
 
 **Recommendation:** If reliability-improvement funding is mode-agnostic, the data says direct it
 at bus operations and ferry, not rail infrastructure — rail is already performing well by any
@@ -77,7 +77,7 @@ pattern likely recurs on every rail line's weekend timetable (see #1 and #6).
 
 ### 6. Bunching is a real, measurable, and geographically concentrated problem
 
-**Finding:** [`docs/density_findings.md`](density_findings.md) — 296,939 recorded bunching
+**Finding:** [`docs/density_findings.md`](density_findings.md) — 317,944 recorded bunching
 snapshots (two vehicles on the same route within 400m, same poll) in the collection window,
 concentrated far more tightly around the CBD/inner-city core than either scheduled service or
 real ridership are — i.e., bunching isn't simply "where the busiest routes are," it clusters
@@ -92,9 +92,9 @@ site visit, not just "add more buses."
 
 **Finding:** [`docs/delay_model_card.md`](delay_model_card.md) — an XGBoost delay-prediction
 model trained on about two weeks of real traffic, weather and delay data still **doesn't beat a
-naive baseline** on a fair (time-based) evaluation (278s mean error against 258s). Daily average
-delay swings widely (from about 50s to 190s), collection had gaps, and the test days included a
-public holiday the features can't represent. A diagnostic random split confirms the features
+naive baseline** on a fair (time-based) evaluation (275s mean error against 232s). Daily average
+delay swings widely (from about 50s to 190s), collection had gaps, and the features include
+nothing (such as public holidays or major events) that would predict those swings. A diagnostic random split confirms the features
 (route, hour, congestion, disruption-alert count) do carry real signal.
 
 **Recommendation:** Not "the model doesn't work" — rather, "don't stand up a congestion-based
@@ -166,16 +166,16 @@ everything below: [`docs/city_service_quality.md`](city_service_quality.md).
 ### 12. Make frequency, not coverage, the network's headline goal
 
 **Finding:** Brisbane's *reach* is comparable to its peers: **70%** of residents live near a stop
-with weekday service (Melbourne 73%). Its *frequency* is not: only **22%** live near a stop with
-service every 15 minutes or better from 7am to 7pm, against **32%** in Melbourne and **41%** in
+with weekday service (Melbourne 80%). Its *frequency* is not: only **22%** live near a stop with
+service every 15 minutes or better from 7am to 7pm, against **35%** in Melbourne and **41%** in
 Sydney. Brisbane is last at every frequency threshold tested (every 30, 20, 15 and 10 minutes),
 so this doesn't depend on where "frequent" is drawn.
 
 **Recommendation:** Adopt "share of residents within walking distance of all-day frequent
 service" as a published network target, benchmarked to peer cities. Matching Melbourne's share
-today means bringing about **282,000 more Greater Brisbane residents** within 400m of frequent
+today means bringing about **362,000 more Greater Brisbane residents** within 400m of frequent
 service. The comparison also shows what that target costs. Brisbane runs **0.15** scheduled stop
-departures per resident per weekday, against 0.19 in Melbourne (+28%) and 0.26 in Sydney (+70%).
+departures per resident per weekday, against 0.22 in Melbourne (+44%) and 0.26 in Sydney (+71%).
 Reshuffling routes alone (fewer, more frequent ones) can raise frequent coverage, but only by
 cutting reach somewhere else. Closing most of the gap without that trade-off needs more service
 hours, not just a redesign.
@@ -186,7 +186,7 @@ hours, not just a redesign.
 growing areas) landed in areas where under 5% of residents have frequent service nearby, slightly
 more than those areas' 43% share of the existing population. Overall, 32% of Greater Brisbane
 residents (904K) live in sizeable areas (10,000+ residents) with essentially no frequent service,
-against 25% in Melbourne and 10% in Sydney. The largest are concentrated in three corridors:
+against 21% in Melbourne and 10% in Sydney. The largest are concentrated in three corridors:
 
 | Corridor | Areas (ABS SA2) | Residents without frequent service |
 |---|---|---|
@@ -206,23 +206,22 @@ starting worklist that updates as ABS population estimates and timetables change
 ### 14. Raise the evening frequency standard (strengthens #5)
 
 **Finding:** Only **19%** of Brisbane residents live near a stop with service at least every 30
-minutes from 8pm to midnight. That's under half of Sydney's **40%**, and below Melbourne's 29%.
+minutes from 8pm to midnight. That's under half of Sydney's **40%**, and below Melbourne's 30%.
 This is the same pattern #5 found on the Cleveland line, now measured citywide and against peers.
 
 **Recommendation:** #5 proposed reviewing Brisbane's off-peak frequency standard. The peer
 comparison gives that review a concrete benchmark: a 30-minute-or-better evening service within
-walking distance of at least as many residents as Melbourne (29%), as a first step towards
+walking distance of at least as many residents as Melbourne (30%), as a first step towards
 Sydney's level.
 
 ### 15. On weekends, protect the frequent corridors and restore missing routes (strengthens #1)
 
 **Finding:** Brisbane's Sunday timetable runs only **43%** of its weekday departures, the lowest
-of the three (Sydney 58%, Melbourne 65%). Yet its *frequent* coverage falls by only 35% from
-weekday to Sunday, about the same as Sydney (36%). Melbourne's falls 59%, so on Sundays Melbourne
-ends up slightly *behind* Brisbane (13% vs 14% of residents near frequent service). Brisbane's
-weekend cuts fall mostly on routes outside its frequent corridors, which matches #1's finding
-that whole routes disappear at weekends while surviving routes keep close to their weekday
-frequency.
+of the three (Sydney 58%, Melbourne 52%). Yet its *frequent* coverage falls by only 36% from
+weekday to Sunday, the same as Sydney (36%). Melbourne's falls 77%, so on Sundays Melbourne ends
+up well *behind* Brisbane (8% vs 14% of residents near frequent service). Brisbane's weekend cuts
+fall mostly on routes outside its frequent corridors, which matches #1's finding that whole routes
+disappear at weekends while surviving routes keep close to their weekday frequency.
 
 **Recommendation:** Keep the current approach of protecting frequent corridors on weekends.
 Melbourne shows the alternative (keeping more routes running, each less often) doesn't produce
